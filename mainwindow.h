@@ -2,8 +2,11 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QString>
+#include <QSerialPortInfo>
+#include <QTextStream>
 
-#include "libusb-1.0.24
+#include "libusb/libusb.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -25,4 +28,7 @@ private slots:
 private:
     Ui::MainWindow *ui;
 };
+
+void print_devs(libusb_device **devs);
+
 #endif // MAINWINDOW_H
