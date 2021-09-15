@@ -6,8 +6,6 @@
 #include <QSerialPortInfo>
 #include <QTextStream>
 
-#include "libusb/libusb.h"
-
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
