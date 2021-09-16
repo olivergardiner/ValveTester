@@ -1,0 +1,48 @@
+#include "CommandParser.h"
+
+#include <stdio.h>
+#include <ctype.h>
+
+CommandParser::CommandParser(void (*mode)(int), void (*set)(int, int), void (*error)(const char *)) {
+  modeFunction = mode;
+  setFunction = set;
+  errorFunction = error;
+}
+
+void CommandParser::parseInput(char input) {
+  if (input != '\n' && input != '\r') {
+    command[position++] = input;
+  } else {
+    command[position] = 0;
+    if (position != 0) {
+      doCommand();
+
+      position = 0;
+    }
+  }
+}
+
+void CommandParser::doCommand() {
+  int index;
+  int intParam;
+
+  command[0] = toupper(command[0]);
+
+  switch (command[0]) {
+    case 'M':
+      if (sscanf(command, "M%d", &index) > 0) {
+        modeFunction(index);
+      }
+      break;
+    case 'S':
+      intParam = -1;
+      if (sscanf(command, "S%d %d", &index, &intParam) > 0) {
+        setFunction(index, intParam);
+      }
+      break;
+    default:
+        errorFunction(command);
+      break;
+  }
+
+}

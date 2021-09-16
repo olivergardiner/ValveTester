@@ -7,53 +7,27 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    libusb_init(NULL); // Should really check that it starts ok
+    ui->testType->addItem("Pentode");
+    ui->testType->addItem("Triode");
+    ui->testType->addItem("Diode");
 
-    libusb_device **devices;
+    ui->plotType->addItem("Plate Characteristics");
 
-    ssize_t cnt = libusb_get_device_list(NULL, &devices);
-    if (cnt >= 0){
-        print_devs(devices);
-    }
+    ui->runButton->setEnabled(false);
 
-    libusb_free_device_list(devices, 1);
+    connect(&serialPort, &QSerialPort::readyRead, this, &MainWindow::handleReadyRead);
+    connect(&serialPort, &QSerialPort::errorOccurred, this, &MainWindow::handleError);
+    connect(&timeoutTimer, &QTimer::timeout, this, &MainWindow::handleTimeout);
 
-    QTextStream out(stdout);
-    const auto serialPortInfos = QSerialPortInfo::availablePorts();
-
-    out << "Total number of ports available: " << serialPortInfos.count() << "\n";
-
-    const QString blankString = "N/A";
-    QString description;
-    QString manufacturer;
-    QString serialNumber;
-
-    for (const QSerialPortInfo &serialPortInfo : serialPortInfos) {
-        description = serialPortInfo.description();
-        manufacturer = serialPortInfo.manufacturer();
-        serialNumber = serialPortInfo.serialNumber();
-        out << "\nPort: " << serialPortInfo.portName()
-            << "\nLocation: " << serialPortInfo.systemLocation()
-            << "\nDescription: " << (!description.isEmpty() ? description : blankString)
-            << "\nManufacturer: " << (!manufacturer.isEmpty() ? manufacturer : blankString)
-            << "\nSerial number: " << (!serialNumber.isEmpty() ? serialNumber : blankString)
-            << "\nVendor Identifier: " << (serialPortInfo.hasVendorIdentifier()
-                                         ? QByteArray::number(serialPortInfo.vendorIdentifier(), 16)
-                                         : blankString)
-            << "\nProduct Identifier: " << (serialPortInfo.hasProductIdentifier()
-                                          ? QByteArray::number(serialPortInfo.productIdentifier(), 16)
-                                          : blankString) << "\n";
-    }
-
+    checkComPorts();
 }
 
 MainWindow::~MainWindow()
 {
-    libusb_exit(NULL);
+    serialPort.close();
 
     delete ui;
 }
-
 
 void MainWindow::on_actionPrint_triggered()
 {
@@ -65,47 +39,125 @@ void MainWindow::on_actionQuit_triggered()
     QCoreApplication::quit();
 }
 
-static void print_devs(libusb_device **devs)
+void MainWindow::checkComPorts() {
+    serialPorts = QSerialPortInfo::availablePorts();
+
+    for (const QSerialPortInfo &serialPortInfo : serialPorts) {
+        if (serialPortInfo.vendorIdentifier() == 0x1a86 && serialPortInfo.productIdentifier() == 0x7523) {
+            port = serialPortInfo.portName();
+        }
+    }
+
+    serialPort.setPortName(port);
+    serialPort.setDataBits(QSerialPort::Data8);
+    serialPort.setParity(QSerialPort::NoParity);
+    serialPort.setStopBits(QSerialPort::OneStop);
+    serialPort.setBaudRate(QSerialPort::Baud115200);
+    serialPort.open(QSerialPort::ReadWrite);
+}
+
+void MainWindow::sendCommand(QString command)
 {
-    libusb_device *dev;
-    int i = 0, j = 0;
-    uint8_t path[8];
+    sendCommand(command, &MainWindow::checkResponse, &MainWindow::responseTimeout);
+}
 
-    while ((dev = devs[i++]) != NULL) {
-        struct libusb_device_descriptor desc;
-        int r = libusb_get_device_descriptor(dev, &desc);
-        if (r < 0) {
-            fprintf(stderr, "failed to get device descriptor");
-            return;
+void MainWindow::sendCommand(QString command, void (MainWindow::*read)(QString), void (MainWindow::*timeout)())
+{
+    responseCallback = read;
+    timeoutCallback = timeout;
+
+    QByteArray c = command.toLatin1();
+
+    serialPort.write(c);
+
+    timeoutTimer.start(5000);
+    awaitingResponse = true;
+}
+
+void MainWindow::checkResponse(QString response)
+{
+    // Just looking to check for an "OK:" response and log anything else (one day)
+    awaitingResponse = false;
+    timeoutTimer.stop();
+}
+
+void MainWindow::checkTestResponse(QString response)
+{
+    awaitingResponse = false;
+    timeoutTimer.stop();
+    ui->runButton->setChecked(false);
+}
+
+void MainWindow::responseTimeout()
+{
+    awaitingResponse = false;
+}
+
+void MainWindow::testTimeout()
+{
+    ui->runButton->setChecked(false);
+    awaitingResponse = false;
+}
+
+void MainWindow::handleReadyRead()
+{
+    serialBuffer.append(serialPort.readAll());
+
+    if (awaitingResponse) {
+        if (serialBuffer.contains('\n') || serialBuffer.contains('\r')) {
+            // We have a complete line and so can process it as a response
+            (this->*responseCallback)(serialBuffer);
+            serialBuffer.clear();
         }
+    } else {
+        // We should log the unexpected characters
+    }
+}
 
-        fprintf(stderr, "%04x:%04x (bus %d, device %d)",
-            desc.idVendor, desc.idProduct,
-            libusb_get_bus_number(dev), libusb_get_device_address(dev));
+void MainWindow::handleTimeout()
+{
+    (this->*timeoutCallback)();
+}
 
-        r = libusb_get_port_numbers(dev, path, sizeof(path));
-        if (r > 0) {
-            fprintf(stderr, " path: %d", path[0]);
-            for (j = 1; j < r; j++)
-                fprintf(stderr, ".%d", path[j]);
-        }
+void MainWindow::handleError(QSerialPort::SerialPortError error)
+{
+    if (error == QSerialPort::ReadError) {
 
-        libusb_device_handle *handle;
-        r = libusb_open(dev, &handle);
+    }
+}
 
-        if (r >= 0) {
-            unsigned char utf16String[256];
-            libusb_get_string_descriptor(handle, desc.iManufacturer, 0, utf16String, 255);
+void MainWindow::on_actionOptions_triggered()
+{
+    PreferencesDialog dialog;
 
-            int end = utf16String[0];
+    dialog.setPort(port);
 
-            QString description = QString::fromUtf16((const char16_t *)(&utf16String[2]), (end / 2) - 1);
+    if (dialog.exec() == 1) {
+        serialPort.close();
 
-            fprintf(stderr, " description %s", description.toStdString().c_str());
+        port = dialog.getPort();
 
-            libusb_close(handle);
-        }
+        serialPort.setPortName(port);
+        serialPort.setBaudRate(QSerialPort::Baud115200);
+        serialPort.open(QSerialPort::ReadWrite);
+    }
+}
 
-        fprintf(stderr, "\n");
+void MainWindow::on_heaterButton_clicked()
+{
+    heaters = !heaters;
+
+    ui->heaterButton->setText(heaters ? "Heaters On" : "Heaters Off");
+    ui->heaterButton->setChecked(heaters);
+    ui->runButton->setEnabled(heaters);
+}
+
+void MainWindow::on_runButton_clicked()
+{
+    if (heaters) {
+        ui->runButton->setChecked(true);
+        sendCommand("M2\n", &MainWindow::checkTestResponse, &MainWindow::testTimeout);
+    } else {
+        ui->runButton->setChecked(false);
     }
 }
