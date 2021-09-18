@@ -43,23 +43,26 @@
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
 
+#define HT_TIMEOUT 4000
+
 /************************************************************   
 *FUNCTION PROTOTYPES
 ************************************************************/
 void flushSerialBuffer();
 void modeCommand(int index);
+void getCommand(int index);
 void setCommand(int index, int intParam);
 void commandError(const char *command);
 
-void send_to_slave();
+void sendToSlave();
 void masterReceiveData(int howMany);
-void request_from_slave();
+void requestFromSlave();
 void slaveReceiveData(int howMany);
 void slaveAnswerRequest();
 
 int runTest();
 void setHeaterVolts();
 void setGridVolts();
-void chargeHighVoltages();
+int chargeHighVoltages();
 void dischargeHighVoltages();
 void doMeasurement(void);

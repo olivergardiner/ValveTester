@@ -6,40 +6,37 @@
 #include "CommandParser.h"
 
 /************************************************************
- * GLOBAL VARIABLES
+   GLOBAL VARIABLES
  ************************************************************/
 int targetValues[ARRAY_LENGTH];   //Array to hold target values (array lenth must be less than 32 ints or 16 unsigned ints owing to I2C limit)
 int measuredValues[ARRAY_LENGTH]; //Array to hold measured values (array lenth must be less than 32 ints or 16 unsigned ints owing to I2C limit)
 
-int testMode = 0;
-float heaterVolts = 0;
-int dataPoints = 2;
-int maxAnodeVolts = dataPoints * MIN_HV_INCREMENT;
-float maxGridVolts1 = 0;
-float voltsPerStep = 0;
-int screenVolts = 0;
-int ulPercent = 0;
-float maxGridVolts2 = 0;
+int slaveCounter = 0;
+
 int duty_cycle = 0;      //Duty cycle of buck converter
 boolean hardware;         //Will be set to 1 if hardware ID pin is high (MASTER), else 0 (SLAVE).
 
-CommandParser parser(modeCommand, setCommand, commandError);
+CommandParser parser(modeCommand, getCommand, setCommand, commandError);
 
 enum {
   ERR_INVALID_MODE,
   ERR_INVALID_SET,
+  ERR_INVALID_GET,
   ERR_HEATER_RANGE,
   ERR_GRID_RANGE,
   ERR_HT_RANGE,
+  ERR_HT_TIMEOUT,
   ERR_UNSAFE
 };
 
 const char *errorMessages[] = {
   "Invalid mode command",
   "Invalid set command",
+  "Invalid get command",
   "Heater voltage out of range",
   "Grid voltage out of range",
   "HT voltage out of range",
+  "Timeout setting HT voltage",
   "Unsafe to test"
 };
 
@@ -97,6 +94,10 @@ void loop() {
     parser.parseInput(Serial.read());
   }
 
+  if (++slaveCounter > 1000) { // Periodically poll the Slave to get heater values
+    requestFromSlave();
+    slaveCounter = 0;
+  }
 } //End of main program loop
 
 // USB command interface functions
@@ -111,20 +112,30 @@ void modeCommand(int index) {
     case 0: // Placeholder for a hard reset
     case 1: // Safe mode
       dischargeHighVoltages();
+      Serial.print("OK: Mode(");
+      Serial.print(index);
+      Serial.println(')');
       break;
     case 2: // Run test
-      success = runTest();
+      // success = runTest();
+      if (success > 0) {
+        Serial.print("OK: ");
+        for (int i = 0; i < 10; i++) {
+          Serial.print(measuredValues[i]);
+          if (i < 9) {
+            Serial.print(", ");
+          } else {
+            Serial.println("");
+          }
+        }
+      }
       break;
     default:
       success = -ERR_INVALID_MODE;
       break;
   }
 
-  if (success > 0) {
-    Serial.print("OK: Mode(");
-    Serial.print(index);
-    Serial.println(')');
-  } else {
+  if (success < 0) {
     Serial.print("ERR: ");
     Serial.println(errorMessages[-success]);
   }
@@ -161,7 +172,11 @@ void setCommand(int index, int intParam) {
 
   if (success > 0) {
     targetValues[index] = intParam;
-    
+
+    if (index < 2) {
+      sendToSlave();
+    }
+
     Serial.print("OK: Set(");
     Serial.print(index);
     Serial.print(") = ");
@@ -169,6 +184,21 @@ void setCommand(int index, int intParam) {
   } else {
     Serial.print("ERR: ");
     Serial.println(errorMessages[-success]);
+  }
+}
+
+/************************************************************
+   Callback for Get commands
+ ************************************************************/
+void getCommand(int index) {
+  if (index >= 0 && index <= 9) {
+    Serial.print("OK: Get(");
+    Serial.print(index);
+    Serial.print(") = ");
+    Serial.println(measuredValues[index]);
+  } else {
+    Serial.print("ERR: ");
+    Serial.println(errorMessages[ERR_INVALID_GET]);
   }
 }
 
@@ -185,7 +215,7 @@ void commandError(const char *command) {
 /****************************************************************************
   Send target heater value to slave
 ****************************************************************************/
-void send_to_slave() {
+void sendToSlave() {
   byte byte1;
   byte byte2;
   Wire.beginTransmission(SLAVE_ADDR);
@@ -215,7 +245,7 @@ void masterReceiveData(int howMany) { //called by ISR when I2C data arrives
 /****************************************************************************
   Request measured heater values from slave
 ****************************************************************************/
-void request_from_slave() {
+void requestFromSlave() {
   byte byte1;
   byte byte2;
   Wire.requestFrom(SLAVE_ADDR, 4); //Request four bytes
@@ -260,12 +290,15 @@ void slaveAnswerRequest() {
    Runs a test
  ************************************************************/
 int runTest() {
+  int status;
   setGridVolts();
-  chargeHighVoltages();
-  doMeasurement();
-  request_from_slave();
+  status = chargeHighVoltages();
+  if (status > 0) {
+    doMeasurement();
+    requestFromSlave();
+  }
 
-  return 1;
+  return status;
 }
 
 /************************************************************
@@ -333,7 +366,7 @@ void setGridVolts() {
 /****************************************************************************
   Charges up the high-voltage capacitor banks to the target values
 ****************************************************************************/
-void chargeHighVoltages() { //Manages the HV supply
+int chargeHighVoltages() { //Manages the HV supply
   digitalWrite(FIRE1_PIN, LOW);                       //Turn off MOSFETs (fail-safe measure)
   digitalWrite(FIRE2_PIN, LOW);
   digitalWrite(CHARGE1_PIN, LOW);
@@ -345,12 +378,17 @@ void chargeHighVoltages() { //Manages the HV supply
   //While either storage cap is not charged to the correct voltage, alternately charge each cap
   //NB: Both cannot be charged simultaneously or one may hold down the supply to the other.
   while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
+    int timeout = 0;
     while (measuredValues[HV1] < (targetValues[HV1] - 0)) { //If voltage is too low, charge capacitor
       digitalWrite(CHARGE1_PIN, HIGH);
       measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
+      if (timeout++ > HT_TIMEOUT) {
+        return -ERR_HT_TIMEOUT;
+      }
     }
     digitalWrite(CHARGE1_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
 
+    timeout = 0;
     measuredValues[HV2] = analogRead(VA2_PIN);          //Measure the high voltage and store the value
     while (measuredValues[HV2] < (targetValues[HV2] - 0)) { //If voltage is too low, charge capacitor
       digitalWrite(CHARGE2_PIN, HIGH);
@@ -358,7 +396,12 @@ void chargeHighVoltages() { //Manages the HV supply
     }
     digitalWrite(CHARGE2_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
     measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
+    if (timeout++ > HT_TIMEOUT) {
+      return -ERR_HT_TIMEOUT;
+    }
   }
+
+  return 1;
 }
 
 /****************************************************************************

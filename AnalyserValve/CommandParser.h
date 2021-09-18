@@ -3,7 +3,7 @@
 
 class CommandParser {
   public:
-    CommandParser(void (*mode)(int), void (*set)(int, int), void (*error)(const char *));
+    CommandParser(void (*mode)(int), void (*getter)(int), void (*setter)(int, int), void (*error)(const char *));
     void parseInput(char);
 
   private:
@@ -13,6 +13,7 @@ class CommandParser {
     int position = 0;
 
     void (*modeFunction)(int);
+    void (*getFunction)(int);
     void (*setFunction)(int, int);
     void (*errorFunction)(const char *);
 };

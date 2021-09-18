@@ -10,16 +10,16 @@ CONFIG += c++11
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp \
-    preferencesdialog.cpp
+    preferencesdialog.cpp \
+    valveanalyser.cpp
 
 HEADERS += \
-    mainwindow.h \
-    preferencesdialog.h
+    preferencesdialog.h \
+    valveanalyser.h
 
 FORMS += \
-    mainwindow.ui \
-    preferencesdialog.ui
+    preferencesdialog.ui \
+    valveanalyser.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

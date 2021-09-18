@@ -1,11 +1,11 @@
-#include "mainwindow.h"
+#include "valveanalyser.h"
 
 #include <QApplication>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    MainWindow w;
+    ValveAnalyser w;
     w.show();
     return a.exec();
 }
