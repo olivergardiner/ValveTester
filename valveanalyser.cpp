@@ -491,3 +491,110 @@ void ValveAnalyser::on_testType_currentIndexChanged(int index)
 
     test = index;
 }
+
+void ValveAnalyser::on_anodeStart_editingFinished()
+{
+    anodeStart = updateVoltage(ui->anodeStart, anodeStart, ANODE);
+}
+
+void ValveAnalyser::on_anodeStop_editingFinished()
+{
+    anodeStop = updateVoltage(ui->anodeStop, anodeStop, ANODE);
+}
+
+void ValveAnalyser::on_anodeStep_editingFinished()
+{
+    anodeStep = updateVoltage(ui->anodeStep, anodeStep, ANODE);
+}
+
+void ValveAnalyser::on_gridStart_editingFinished()
+{
+    gridStart = updateVoltage(ui->gridStart, gridStart, GRID);
+}
+
+void ValveAnalyser::on_gridStop_editingFinished()
+{
+    gridStop = updateVoltage(ui->gridStop, gridStop, GRID);
+}
+
+void ValveAnalyser::on_gridStep_editingFinished()
+{
+    gridStep = updateVoltage(ui->gridStep, gridStep, GRID);
+}
+
+void ValveAnalyser::on_screenStart_editingFinished()
+{
+    screenStart = updateVoltage(ui->screenStart, screenStart, SCREEN);
+}
+
+void ValveAnalyser::on_screenStop_editingFinished()
+{
+    screenStop = updateVoltage(ui->screenStop, screenStop, SCREEN);
+}
+
+void ValveAnalyser::on_screenStep_editingFinished()
+{
+    screenStep = updateVoltage(ui->screenStep, screenStep, SCREEN);
+}
+
+void ValveAnalyser::on_heaterVoltage_editingFinished()
+{
+    heaterVoltage = updateVoltage(ui->heaterVoltage, heaterVoltage, HEATER);
+}
+
+double ValveAnalyser::updateVoltage(QLineEdit *input, double oldValue, int electrode)
+{
+    float parsedValue;
+
+    const char *value = _strdup(input->text().toStdString().c_str());
+
+    int n = sscanf_s(value, "%f", &parsedValue, strlen(value));
+
+    if (n < 1) {
+        parsedValue = oldValue;
+    }
+
+    if (parsedValue < 0) {
+        parsedValue = 0.0;
+    }
+    switch (electrode) {
+    case HEATER:
+        if (parsedValue > 20.0) {
+            parsedValue = 20.0;
+        }
+        break;
+    case GRID:
+        if (parsedValue > 66.0) {
+            parsedValue = 66.0;
+        }
+        break;
+    case ANODE:
+    case SCREEN:
+        if (parsedValue > 540.0) {
+            parsedValue = 540.0;
+        }
+        break;
+    default:
+        break;
+    }
+
+    char number[32];
+
+    sprintf(number, "%.2f", parsedValue);
+
+    int length = strlen(number);
+    for (int i=length-1;i >= 0; i--) {
+        char test = number[i];
+        if (test == '0' || test == '.') {
+            number[i] = 0;
+        }
+
+        if (test != '0') {
+            break;
+        }
+    }
+
+    input->setText(number);
+
+    return parsedValue;
+}

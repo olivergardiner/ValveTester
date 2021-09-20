@@ -2,7 +2,7 @@
 #include <avr/pgmspace.h>
 #include <Wire.h>   //Include the Wire library to talk I2C
 
-#include "AnalyserValue.h"
+#include "AnalyserValve.h"
 #include "CommandParser.h"
 
 /************************************************************
@@ -75,6 +75,7 @@ void setup() {
     digitalWrite(DISCHARGE2_PIN, HIGH);
     Wire.begin(MASTER_ADDR);            //Register I2C address
     Wire.onReceive(masterReceiveData);  //Interrupt when I2C data is being received
+    digitalWrite(LED_BUILTIN, HIGH);
   }
   else { //else this is SLAVE hardware
     pinMode(LV_DETECT_PIN, INPUT);
@@ -82,6 +83,7 @@ void setup() {
     Wire.begin(SLAVE_ADDR);             //Register I2C address
     Wire.onReceive(slaveReceiveData);   //Interrupt when I2C data is being received
     Wire.onRequest(slaveAnswerRequest); //Interrupt when master demands a response
+    digitalWrite(LED_BUILTIN, LOW);
   }
 }
 

@@ -7,6 +7,7 @@
 #include <QSerialPortInfo>
 #include <QTextStream>
 #include <QTimer>
+#include <QLineEdit>
 
 #include "preferencesdialog.h"
 
@@ -74,6 +75,26 @@ private slots:
 
     void on_testType_currentIndexChanged(int index);
 
+    void on_anodeStart_editingFinished();
+
+    void on_anodeStop_editingFinished();
+
+    void on_anodeStep_editingFinished();
+
+    void on_gridStart_editingFinished();
+
+    void on_gridStop_editingFinished();
+
+    void on_gridStep_editingFinished();
+
+    void on_screenStart_editingFinished();
+
+    void on_screenStop_editingFinished();
+
+    void on_screenStep_editingFinished();
+
+    void on_heaterVoltage_editingFinished();
+
 private:
     Ui::ValveAnalyser *ui;
 
@@ -87,6 +108,8 @@ private:
     int mode = PENTODE;
     int device = PENTODE;
     int test = ANODE_CHARACTERISTICS;
+
+    double heaterVoltage;
 
     double anodeStart;
     double anodeStop;
@@ -150,6 +173,8 @@ private:
     void steppedSweep(double sweepStart, double sweepStop, double stepStart, double stepStop, double step);
     void singleSweep(double sweepStart, double sweepStop);
     double sampleFunction(double linearValue);
+
+    double updateVoltage(QLineEdit *input, double oldValue, int electrode);
 };
 
 #endif // VALVEANALYSER_H
