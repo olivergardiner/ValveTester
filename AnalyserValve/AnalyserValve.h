@@ -43,7 +43,7 @@
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
 
-#define HT_TIMEOUT 4000
+#define HT_TIMEOUT 8000
 
 /************************************************************   
 *FUNCTION PROTOTYPES
@@ -64,5 +64,5 @@ int runTest();
 void setHeaterVolts();
 void setGridVolts();
 int chargeHighVoltages();
-void dischargeHighVoltages();
+void dischargeHighVoltages(int bank);
 void doMeasurement(void);

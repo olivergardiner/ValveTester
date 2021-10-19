@@ -1,6 +1,7 @@
 #include <math.h>
 #include <avr/pgmspace.h>
 #include <Wire.h>   //Include the Wire library to talk I2C
+//#include <Adafruit_MCP4725.h> Could use the library for the MCP4725s but it's trivial with Wire
 
 #include "AnalyserValve.h"
 #include "CommandParser.h"
@@ -13,8 +14,16 @@ int measuredValues[ARRAY_LENGTH]; //Array to hold measured values (array lenth m
 
 int slaveCounter = 0;
 
+double vHeater = 0; // Persistent value used for rolling averaging
+double iHeater = 0; // Persistent value used for rolling averaging
+
+#define AVG_FACTOR 0.95
+
 int duty_cycle = 0;      //Duty cycle of buck converter
 boolean hardware;         //Will be set to 1 if hardware ID pin is high (MASTER), else 0 (SLAVE).
+
+//Adafruit_MCP4725 dac1;
+//Adafruit_MCP4725 dac2;
 
 CommandParser parser(modeCommand, getCommand, setCommand, commandError);
 
@@ -45,6 +54,8 @@ const char *errorMessages[] = {
  ************************************************************/
 void setup() {
   Serial.begin(115200); //Setup serial interface
+  //dac1.begin(DAC1_ADDR);
+  //dac2.begin(DAC2_ADDR);
 
   pinMode(HARDWARE_ID_PIN, INPUT);
   //I2C SDA is on Arduino Nano pin A4 as standard
@@ -58,9 +69,13 @@ void setup() {
   analogWrite(PWM_PIN, 0);                  //Make sure PWM output is zero on startup
   pinMode(LED_BUILTIN, OUTPUT);             //Arduino built-in LED for debugging
 
-  hardware = digitalRead(HARDWARE_ID_PIN); //Identify if this is MASTER (1) or SLAVE (0) Arduino
+  hardware = digitalRead(HARDWARE_ID_PIN) == HIGH; //Identify if this is MASTER (1) or SLAVE (0) Arduino
 
-  if (hardware == MASTER) {
+  for (int i = 0; i < ARRAY_LENGTH; i++) {
+    targetValues[i] = 0;
+  }
+
+  if (hardware) { // MASTER mode
     pinMode(CHARGE1_PIN, OUTPUT);
     pinMode(DISCHARGE1_PIN, OUTPUT);
     pinMode(FIRE1_PIN, OUTPUT);
@@ -76,8 +91,9 @@ void setup() {
     Wire.begin(MASTER_ADDR);            //Register I2C address
     Wire.onReceive(masterReceiveData);  //Interrupt when I2C data is being received
     digitalWrite(LED_BUILTIN, HIGH);
+    setGridVolts();
   }
-  else { //else this is SLAVE hardware
+  else { // else this is SLAVE hardware
     pinMode(LV_DETECT_PIN, INPUT);
     analogWrite(PWM_PIN, 0);            //Set heater to 0V at start-up
     Wire.begin(SLAVE_ADDR);             //Register I2C address
@@ -91,14 +107,17 @@ void setup() {
    MAIN LOOP
  ************************************************************/
 void loop() {
+  if (hardware == MASTER) {
+    while (Serial.available() > 0) {
+      parser.parseInput(Serial.read());
+    }
 
-  while (Serial.available() > 0) {
-    parser.parseInput(Serial.read());
-  }
-
-  if (++slaveCounter > 1000) { // Periodically poll the Slave to get heater values
-    requestFromSlave();
-    slaveCounter = 0;
+    if (++slaveCounter > 10000) { // Periodically poll the Slave to get heater values
+      requestFromSlave();
+      slaveCounter = 0;
+    }
+  } else { // SLAVE mode
+    setHeaterVolts();
   }
 } //End of main program loop
 
@@ -111,15 +130,26 @@ void modeCommand(int index) {
   int success = 1;
 
   switch (index) {
-    case 0: // Placeholder for a hard reset
-    case 1: // Safe mode
-      dischargeHighVoltages();
+    case 0: // Safe mode
+      dischargeHighVoltages(1);
+      dischargeHighVoltages(2);
+      for (int i = 0; i < ARRAY_LENGTH; i++) {
+        targetValues[i] = 0;
+      }
+      sendToSlave();
+      setGridVolts();
+      Serial.print("OK: Mode(");
+      Serial.print(index);
+      Serial.println(')');
+    case 1: // Discharge high voltages (prep for new sweep)
+      dischargeHighVoltages(1);
+      dischargeHighVoltages(2);
       Serial.print("OK: Mode(");
       Serial.print(index);
       Serial.println(')');
       break;
     case 2: // Run test
-      // success = runTest();
+      success = runTest();
       if (success > 0) {
         Serial.print("OK: ");
         for (int i = 0; i < 10; i++) {
@@ -132,6 +162,26 @@ void modeCommand(int index) {
         }
       }
       break;
+    case 3: // Prepare HV (for debugging)
+      success = chargeHighVoltages();
+      if (success > 0) {
+        Serial.print("OK: ");
+        Serial.print(measuredValues[HV1]);
+        Serial.print(", ");
+        Serial.print(measuredValues[HV2]);
+        Serial.println("");
+      }
+      break;
+    case 4: // Prepare HV and apply (for debugging)
+      success = chargeHighVoltages();
+      if (success > 0) {
+        digitalWrite(FIRE1_PIN, HIGH);    //Apply high voltage to the DUT
+        digitalWrite(FIRE2_PIN, HIGH);
+        Serial.print("OK: Mode(");
+        Serial.print(index);
+        Serial.println(')');
+      }
+      break;
     default:
       success = -ERR_INVALID_MODE;
       break;
@@ -139,7 +189,16 @@ void modeCommand(int index) {
 
   if (success < 0) {
     Serial.print("ERR: ");
-    Serial.println(errorMessages[-success]);
+    Serial.print(errorMessages[-success]);
+    Serial.print(" - ");
+    for (int i = 0; i < 10; i++) {
+      Serial.print(measuredValues[i]);
+      if (i < 9) {
+        Serial.print(", ");
+      } else {
+        Serial.println("");
+      }
+    }
   }
 }
 
@@ -163,7 +222,7 @@ void setCommand(int index, int intParam) {
       break;
     case HV1: // Anode 1 voltage
     case HV2: // Anode 2 voltage
-      if (intParam < 0 || intParam > 4095) {
+      if (intParam < 0 || intParam > 1023) {
         success = -ERR_HT_RANGE;
       }
       break;
@@ -177,6 +236,8 @@ void setCommand(int index, int intParam) {
 
     if (index < 2) {
       sendToSlave();
+    } else if (index == VG1 || index == VG2) {
+      setGridVolts();
     }
 
     Serial.print("OK: Set(");
@@ -309,17 +370,15 @@ int runTest() {
 void setHeaterVolts() { //Manages the heater buck-converter
   int Vh_adc = analogRead(VH_PIN);
   int Ih_adc = analogRead(IH_PIN);
+  
   Vh_adc = Vh_adc - (Ih_adc / 8);   //Divide Ih_adc value by 8 and subtract from Vh_adc value to get corrected voltage across heater
-  measuredValues[VH] = Vh_adc;        //Update the array with new heater voltage
-  measuredValues[IH] = Ih_adc;        //Update the array with new heater current
+  
   if (duty_cycle > 0) {               //Duty cycle is always trying to decrement as a fail-safe measure
     duty_cycle --;                   //but don't let it drop below zero (wrap around)
   }
 
   if (Ih_adc < 110) {                               //If heater current is less than 2 amps it is safe to proceed.
-    measuredValues[VH] = Vh_adc;                  //Update the array with new heater voltage
-    measuredValues[IH] = Ih_adc;                  //Update the array with new heater current
-    if (measuredValues[VH] < targetValues[VH]) {  //If heater voltage is too low, increment duty cycle
+    if (Vh_adc < targetValues[VH]) {  //If heater voltage is too low, increment duty cycle
       if (duty_cycle < 254) {                   //But don't let duty cycle exceed 255 (wrap around)
         duty_cycle += 2;
       }
@@ -329,41 +388,45 @@ void setHeaterVolts() { //Manages the heater buck-converter
   if (!digitalRead(LV_DETECT_PIN)) {
     duty_cycle = 0;                                //Disable buck converter if heater power supply is off
   }
+
   analogWrite(PWM_PIN, duty_cycle);                 //Update buck converter with new duty cycle
 
-  /*For debugging*/
-  if (measuredValues[VH] == targetValues[VH]) { //If heater voltage is just right
-    digitalWrite(LED_BUILTIN, HIGH); //light LED
-  }
-  else {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
+  vHeater = (vHeater * AVG_FACTOR + ((double) Vh_adc));
+  iHeater = (iHeater * AVG_FACTOR + ((double) Ih_adc));
+
+  //measuredValues[VH] = Vh_adc;                  //Update the array with new heater voltage
+  //measuredValues[IH] = Ih_adc;                  //Update the array with new heater current
+  measuredValues[VH] = vHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater voltage
+  measuredValues[IH] = iHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater current
 }
 
 /****************************************************************************
   Updates the bias DACs with target values
 ****************************************************************************/
 void setGridVolts() {
-  if (measuredValues[VG1] != targetValues[VG1]) {   //If target grid voltage has changed since last time,
-    Wire.beginTransmission(DAC1_ADDR);
-    Wire.write(64);                               //Command to update the DAC
-    Wire.write(targetValues[VG1] >> 4);           //8 most significant bits
-    Wire.write((targetValues[VG1] & 15) << 4);    //4 least significant bits
-    if (Wire.endTransmission() == 0) {            //If I2C tramission was a success
-      measuredValues[VG1] = targetValues[VG1];  //Store the new grid voltage
-    }
+  byte buf[3];
+
+  Wire.beginTransmission(DAC1_ADDR);          // This DAC programmed in Fast mode
+  buf[0] = targetValues[VG1] >> 8;
+  buf[1] = targetValues[VG1] & 255;
+  Wire.write(buf, 2);
+  if (Wire.endTransmission() == 0) {          //If I2C tramission was a success
+    measuredValues[VG1] = targetValues[VG1];  //Store the new grid voltage
   }
 
-  if (measuredValues[VG2] != targetValues[VG2]) { //If target grid voltage has changed since last time,
-    Wire.beginTransmission(DAC2_ADDR);
-    Wire.write(64);                             //Command to update the DAC
-    Wire.write(targetValues[VG2] >> 4);         //8 most significant bits
-    Wire.write((targetValues[VG2] & 15) << 4);  //4 least significant bits
-    if (Wire.endTransmission() == 0) {          //If I2C tramission was a success
-      measuredValues[VG2] = targetValues[VG2];//Store the new grid voltage
-    }
+  Wire.beginTransmission(DAC2_ADDR);
+  buf[0] = targetValues[VG2] >> 8;
+  buf[1] = targetValues[VG2] & 255;
+  Wire.write(buf, 2);
+  if (Wire.endTransmission() == 0) {          //If I2C tramission was a success
+    measuredValues[VG2] = targetValues[VG2];  //Store the new grid voltage
   }
 }
+
+/* void setGridVolts() {
+  dac1.setVoltage(targetValues[VG1], false);
+  dac2.setVoltage(targetValues[VG2], false);
+  } */
 
 /****************************************************************************
   Charges up the high-voltage capacitor banks to the target values
@@ -376,7 +439,15 @@ int chargeHighVoltages() { //Manages the HV supply
   digitalWrite(DISCHARGE1_PIN, LOW);
   digitalWrite(DISCHARGE2_PIN, LOW);
   measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
+  if (measuredValues[HV1] > targetValues[HV1]) {     //Check if our start condition is overvoltage
+    dischargeHighVoltages(1);                        //If so, discharge it manually as it may take a while to settle through leakage
+    measuredValues[HV1] = analogRead(VA1_PIN);       //Measure the high voltage and store the value
+  }
   measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
+  if (measuredValues[HV2] > targetValues[HV2]) {     //Check if our start condition is overvoltage
+    dischargeHighVoltages(2);                        //If so, discharge it manually as it may take a while to settle through leakage
+    measuredValues[HV2] = analogRead(VA2_PIN);       //Measure the high voltage and store the value
+  }
   //While either storage cap is not charged to the correct voltage, alternately charge each cap
   //NB: Both cannot be charged simultaneously or one may hold down the supply to the other.
   while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
@@ -398,6 +469,7 @@ int chargeHighVoltages() { //Manages the HV supply
     }
     digitalWrite(CHARGE2_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
     measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
+
     if (timeout++ > HT_TIMEOUT) {
       return -ERR_HT_TIMEOUT;
     }
@@ -421,7 +493,7 @@ void doMeasurement(void) {
 
   delayMicroseconds(300);
 
-  //volts1 = analogRead(VA1_PIN);  //Read ADC twice to introduce some delay and avoid glitches
+  volts1 = analogRead(VA1_PIN);  //Read ADC twice to introduce some delay and avoid glitches
   volts1 = analogRead(VA1_PIN);
   amps2_hi = analogRead(IA2_HI_PIN);
   amps2_hi = analogRead(IA2_HI_PIN);
@@ -447,17 +519,18 @@ void doMeasurement(void) {
 /****************************************************************************
   Discharges the capacitor banks
 ****************************************************************************/
-void dischargeHighVoltages(void) {
-  digitalWrite(LED_BUILTIN, HIGH); //for debugging
-  digitalWrite(FIRE1_PIN, LOW);
-  digitalWrite(FIRE2_PIN, LOW);
-  digitalWrite(CHARGE1_PIN, LOW);
-  digitalWrite(CHARGE2_PIN, LOW);
-  digitalWrite(DISCHARGE1_PIN, HIGH);
-  digitalWrite(DISCHARGE2_PIN, HIGH);
-  while (analogRead(IA1_HI_PIN)) { //wait until no discharge current is detected
+void dischargeHighVoltages(int bank) {
+  if (bank == 1) {
+    digitalWrite(FIRE1_PIN, LOW);
+    digitalWrite(CHARGE1_PIN, LOW);
+    digitalWrite(DISCHARGE1_PIN, HIGH);
+    while (analogRead(IA1_HI_PIN)) { //wait until no discharge current is detected
+    }
+  } else if (bank == 2) {
+    digitalWrite(FIRE2_PIN, LOW);
+    digitalWrite(CHARGE2_PIN, LOW);
+    digitalWrite(DISCHARGE2_PIN, HIGH);
+    while (analogRead(IA2_HI_PIN)) { //wait until no discharge current is detected
+    }
   }
-  while (analogRead(IA2_HI_PIN)) { //wait until no discharge current is detected
-  }
-  digitalWrite(LED_BUILTIN, LOW); //for debugging
 }

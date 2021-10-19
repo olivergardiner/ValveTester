@@ -5,6 +5,12 @@ ValveAnalyser::ValveAnalyser(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::ValveAnalyser)
 {
+    logFile = new QFile("analyser.log");
+    if (!logFile->open(QIODevice::WriteOnly)) {
+        qWarning("Couldn't open log file.");
+        logFile = nullptr;
+    }
+
     ui->setupUi(this);
 
     ui->deviceType->addItem("Pentode", PENTODE);
@@ -24,8 +30,11 @@ ValveAnalyser::ValveAnalyser(QWidget *parent)
     connect(&serialPort, &QSerialPort::readyRead, this, &ValveAnalyser::handleReadyRead);
     connect(&serialPort, &QSerialPort::errorOccurred, this, &ValveAnalyser::handleError);
     connect(&timeoutTimer, &QTimer::timeout, this, &ValveAnalyser::handleTimeout);
+    connect(&heaterTimer, &QTimer::timeout, this, &ValveAnalyser::handleHeaterTimeout);
 
     checkComPorts();
+
+    heaterTimer.start(2000); // waits for 2s before starting to poll the measured heater values
 }
 
 ValveAnalyser::~ValveAnalyser()
@@ -69,6 +78,13 @@ void ValveAnalyser::sendCommand(QString command)
 
 void ValveAnalyser::sendCommand(QString command, void (ValveAnalyser::*read)(QString), void (ValveAnalyser::*timeout)())
 {
+    if (awaitingResponse) { // Need to wait for previous command to complete (or timeout) before sending next command
+        Command bufferedCommand(command, read, timeout);
+        commandBuffer.append(bufferedCommand);
+
+        return;
+    }
+
     qInfo(command.toStdString().c_str());
 
     responseCallback = read;
@@ -88,11 +104,46 @@ void ValveAnalyser::checkResponse(QString response)
     // Just looking to check for an "OK:" response and log anything else (one day)
     awaitingResponse = false;
     timeoutTimer.stop();
+
+    QRegularExpression matcher(R"(^OK: Get\((\d+)\) = (\d+))");
+    QRegularExpressionMatch match = matcher.match(response);
+    if (match.lastCapturedIndex() == 2) {
+        int variable = match.captured(1).toInt();
+        int value = match.captured(2).toInt();
+
+        if (variable >= 0 && variable <= 9) {
+            measuredValues[variable] = value;
+        }
+
+        if (variable == VH) {
+            measuredHeaterVoltage = convertMeasuredVoltage(HEATER, value);
+            //measuredHeaterVoltage += convertMeasuredVoltage(HEATER, value);
+            //measuredHeaterVoltage /= 2.0;
+            QString vh = QString {"%1"}.arg(measuredHeaterVoltage, -5, 'f', 2, '0');
+            ui->heaterVlcd->display(vh);
+        } else if (variable == IH) {
+            measuredHeaterCurrent = convertMeasuredCurrent(HEATER, value);
+            //measuredHeaterCurrent += convertMeasuredCurrent(HEATER, value);
+            //measuredHeaterCurrent /= 2.0;
+            QString ih = QString {"%1"}.arg(measuredHeaterCurrent, -5, 'f', 2, '0');
+            ui->heaterIlcd->display(ih);
+        }
+    }
+
+    if (!commandBuffer.isEmpty()) { // There is a command to send
+        commandBuffer.first().send(this);
+        commandBuffer.removeFirst();
+    }
 }
 
 void ValveAnalyser::responseTimeout()
 {
     awaitingResponse = false;
+
+    if (!commandBuffer.isEmpty()) { // There is a command to send
+        commandBuffer.first().send(this);
+        commandBuffer.removeFirst();
+    }
 }
 
 void ValveAnalyser::pentodeMode()
@@ -152,6 +203,14 @@ void ValveAnalyser::diodeMode()
     ui->screenStep->setEnabled(false);
 }
 
+void ValveAnalyser::log(QString message)
+{
+    if (logFile != nullptr) {
+        logFile->write(message.toLatin1());
+        logFile->write("\n");
+    }
+}
+
 QString ValveAnalyser::buildSetCommand(QString command, int value)
 {
     QString stringValue;
@@ -181,22 +240,22 @@ void ValveAnalyser::startTest()
         stepType = GRID;
         stepCommandPrefix = "S2 ";
         sweepType = ANODE;
-        sweepCommandPrefix = "S7 ";
+        sweepCommandPrefix = "S3 ";
 
         // Forced values for testing
-        anodeStart = 0;
-        anodeStop = 300;
-        gridStart = 0;
-        gridStop = 1.0;
-        gridStep = 0.5;
-        screenStart = 250;
+        //anodeStart = 0;
+        //anodeStop = 300;
+        //gridStart = 0;
+        //gridStop = 1.0;
+        //gridStep = 0.5;
+        //screenStart = 250;
 
         steppedSweep(anodeStart, anodeStop, gridStart, gridStop, gridStep);
 
         if (mode == PENTODE) {
-            setupCommands.append(buildSetCommand("S3 ", convertVoltage(SCREEN, screenStart)));
+            setupCommands.append(buildSetCommand("S7 ", convertTargetVoltage(SCREEN, screenStart)));
         } else {
-            setupCommands.append("S3 0");
+            setupCommands.append("S7 0");
         }
         setupCommands.append(buildSetCommand(stepCommandPrefix, stepParameter.at(0)));
 
@@ -250,6 +309,12 @@ void ValveAnalyser::prepareTest() {
             ui->runButton->setChecked(false);
             ui->progressBar->setVisible(false);
             sendCommand("M1");
+            isTestRunning = false;
+
+            if (!commandBuffer.isEmpty()) { // There is a command to send
+                commandBuffer.first().send(this);
+                commandBuffer.removeFirst();
+            }
         }
     }
 
@@ -293,6 +358,11 @@ void ValveAnalyser::checkTestResponse(QString response)
     } else {
         // Abort
         abortTest();
+
+        if (!commandBuffer.isEmpty()) { // There is a command to send
+            commandBuffer.first().send(this);
+            commandBuffer.removeFirst();
+        }
     }
 }
 
@@ -303,9 +373,14 @@ void ValveAnalyser::testTimeout()
     timeoutTimer.stop();
 
     abortTest();
+
+    if (!commandBuffer.isEmpty()) { // Just in case - there shouldn't be any queued commands
+        commandBuffer.first().send(this);
+        commandBuffer.removeFirst();
+    }
 }
 
-int ValveAnalyser::convertVoltage(int electrode, double voltage)
+int ValveAnalyser::convertTargetVoltage(int electrode, double voltage)
 {
     int value = 0;
 
@@ -327,6 +402,55 @@ int ValveAnalyser::convertVoltage(int electrode, double voltage)
     return value;
 }
 
+double ValveAnalyser::convertMeasuredVoltage(int electrode, int voltage)
+{
+    double value = 0;
+
+    switch (electrode) {
+    case HEATER:
+        value = (((double) voltage) / 1023 / 470 * 3770 * vRefSlave);
+        break;
+    case ANODE:
+    case SCREEN:
+        value = (((double) voltage) / 1023 / 9400 * 1419400 * vRefMaster);
+        break;
+    case GRID:
+        value = (((double) voltage) / 4095 * 16.5 * vRefMaster);
+        break;
+    default:
+        break;
+    }
+
+    return value;
+}
+
+double ValveAnalyser::convertMeasuredCurrent(int electrode, int current, int currentLo)
+{
+    double value = 0;
+    double voltageHi;
+
+    switch (electrode) {
+    case HEATER:
+        value = (((double) current) / 1023 / 0.22 * vRefSlave);
+        break;
+    case ANODE:
+    case SCREEN:
+        voltageHi = ((double) current) / 1023 / 2.0 * vRefMaster;
+        if (voltageHi < 1.9) { // If we're close to 3 diode drops we should use the Lo value
+            value = voltageHi / 33.333333;
+        } else {
+            value = (((double) currentLo) / 1023 / 2.0 * vRefMaster / 3.333333);
+        }
+        break;
+    case GRID:
+        break;
+    default:
+        break;
+    }
+
+    return value;
+}
+
 void ValveAnalyser::steppedSweep(double sweepStart, double sweepStop, double stepStart, double stepStop, double step)
 {
     double increment = 1.0 / sweepPoints;
@@ -339,14 +463,14 @@ void ValveAnalyser::steppedSweep(double sweepStart, double sweepStop, double ste
     sweepIndex = 0;
 
     while (stepVoltage <= stepStop) {
-        stepParameter.append(convertVoltage(stepType, stepVoltage));
+        stepParameter.append(convertTargetVoltage(stepType, stepVoltage));
 
         QList<int> thisSweep;
         QList<QString> results;
 
         for (double sweep = 0.0; sweep <= 1.0; sweep += increment) {
             double sweepVoltage = sweepStart + (sweepStop - sweepStart) * sampleFunction(sweep);
-            thisSweep.append(convertVoltage(sweepType, sweepVoltage));
+            thisSweep.append(convertTargetVoltage(sweepType, sweepVoltage));
         }
 
         sweepParameter.append(thisSweep);
@@ -371,7 +495,10 @@ void ValveAnalyser::handleReadyRead()
     if (awaitingResponse) {
         if (serialBuffer.contains('\n') || serialBuffer.contains('\r')) {
             // We have a complete line and so can process it as a response
+            qInfo(serialBuffer);
+
             (this->*responseCallback)(serialBuffer);
+
             serialBuffer.clear();
         }
     } else {
@@ -382,6 +509,23 @@ void ValveAnalyser::handleReadyRead()
 void ValveAnalyser::handleTimeout()
 {
     (this->*timeoutCallback)();
+}
+
+void ValveAnalyser::handleHeaterTimeout()
+{
+    if (heaters) { // Only poll if the heaters are on
+        if (!isTestRunning) { // Only poll if we're not running a test
+            sendCommand("G0");
+            sendCommand("G1"); // Second command should get queued
+        }
+    } else {
+        measuredHeaterVoltage = 0.0;
+        ui->heaterVlcd->display("0.000");
+        measuredHeaterCurrent = 0.0;
+        ui->heaterIlcd->display("0.000");
+    }
+
+    heaterTimer.start(500); // Do it again in 500ms...
 }
 
 void ValveAnalyser::handleError(QSerialPort::SerialPortError error)
@@ -415,6 +559,12 @@ void ValveAnalyser::on_heaterButton_clicked()
     ui->heaterButton->setText(heaters ? "Heaters On" : "Heaters Off");
     ui->heaterButton->setChecked(heaters);
     ui->runButton->setEnabled(heaters);
+
+    if (heaters) {
+        sendCommand(buildSetCommand("S0 ", convertTargetVoltage(HEATER, heaterVoltage)));
+    } else {
+        sendCommand("S0 0");
+    }
 }
 
 void ValveAnalyser::on_runButton_clicked()

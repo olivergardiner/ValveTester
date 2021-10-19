@@ -8,8 +8,12 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QLineEdit>
+#include <QFile>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
 
 #include "preferencesdialog.h"
+#include "command.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
 #define IH       1   //Heater current
@@ -54,6 +58,8 @@ public:
     ValveAnalyser(QWidget *parent = nullptr);
     ~ValveAnalyser();
 
+    void sendCommand(QString command, void (ValveAnalyser::* read)(QString), void (ValveAnalyser::* timeout)());
+
 private slots:
     void on_actionPrint_triggered();
 
@@ -68,6 +74,8 @@ private slots:
     void handleReadyRead();
 
     void handleTimeout();
+
+    void handleHeaterTimeout();
 
     void handleError(QSerialPort::SerialPortError error);
 
@@ -102,8 +110,13 @@ private:
     QString port = "COM1";
     QSerialPort serialPort;
     QTimer timeoutTimer;
+    QTimer heaterTimer;  // Used to control the polling of the heater values
     bool awaitingResponse = false;
     QByteArray serialBuffer;
+
+    int measuredValues[10];
+    double measuredHeaterVoltage = 0.0;
+    double measuredHeaterCurrent = 0.0;
 
     int mode = PENTODE;
     int device = PENTODE;
@@ -131,7 +144,6 @@ private:
     void checkComPorts();
 
     void sendCommand(QString command);
-    void sendCommand(QString command, void (ValveAnalyser::* read)(QString), void (ValveAnalyser::* timeout)());
 
     void (ValveAnalyser::* responseCallback)(QString);
     void (ValveAnalyser::* timeoutCallback)();
@@ -142,6 +154,8 @@ private:
     void pentodeMode();
     void triodeMode(bool doubleTriode);
     void diodeMode();
+
+    QList<Command> commandBuffer;
 
     QList<QString> setupCommands;
     QList<int> stepParameter;
@@ -158,8 +172,11 @@ private:
     QString sweepCommandPrefix;
     int sweepPoints = 20;
     bool isStopRequested;
-    bool isTestRunning = false;;
+    bool isTestRunning = false;
     bool isTestAborted;
+    QFile *logFile;
+
+    void log(QString message);
 
     QString buildSetCommand(QString command, int value);
     void startTest();
@@ -169,7 +186,9 @@ private:
     void abortTest();
     void checkTestResponse(QString response);
     void testTimeout();
-    int convertVoltage(int electrode, double voltage);
+    int convertTargetVoltage(int electrode, double voltage);
+    double convertMeasuredVoltage(int electrode, int voltage);
+    double convertMeasuredCurrent(int electrode, int current, int currentLo = 0);
     void steppedSweep(double sweepStart, double sweepStop, double stepStart, double stepStop, double step);
     void singleSweep(double sweepStart, double sweepStop);
     double sampleFunction(double linearValue);
