@@ -1,5 +1,7 @@
 # ValveTester
-QT app for using the Valve Wizard's arduino based valve tester:
+QT app for using the Valve Wizard's arduino based valve tester
+
+Project home page: https://whitecottage.org.uk/valve-wizard-valve-analyser/
 
 This project contains both the Arduino code and a QT application that will run the analyser and plot characteristic curves for various types of valve. While Merlin's original code provides a text oriented UI direct from the Arduino, this is limiting for programmatic use. Instead, the code presented here implements a line-oriented protocol for issuing commands to the Arduino and receiving responses back that allow the paramters of the test, and the testing itself, to be controlled.
 
@@ -37,8 +39,9 @@ M1		Disharges the capacitor banks - important between sweeps of the Anode or Gri
 M2		Test mode - executes a test according to the set of target values and returns the set of measured values
 M3		Debug mode 1 - charges the capacitor banks (allows the charging process to be validated on the hardware)
 M4		Debug mode 2 - charges the capacitor banks and applies them to the device under test
+M5		Measure and display all measured values
 
-When a test is run using the M" command, an ok response will also return a comma separated list of values corresponding to the measured values of each parameter (noting that the Grid voltages are not actually measured and the value returned is the value used to programme the corresponding DAC).
+When a test is run using the M commands, the response will also return a comma separated list of values corresponding to the measured values of each parameter (noting that the Grid voltages are not actually measured and the value returned is the value used to programme the corresponding DAC).
 
 Set/Get commands
 ================
