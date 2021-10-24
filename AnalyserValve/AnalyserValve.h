@@ -29,15 +29,16 @@
 #define FIRE2_PIN 2
 #define CHARGE2_PIN 3       
 #define LV_DETECT_PIN 9  //Pin to detect if heater power supply is present
+
 #define ARRAY_LENGTH 10         
 
 //INDICES FOR BOTH ARRAYS
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195] 
 #define IH       1   //Heater current
-#define VG1      2  //Grid voltage 1  [example: 1V = dac60, 10V=dac605, 20V=dac1210, 30V=dac1815, 40V=dac2420, 50V=dac3020]
+#define VG1      2   //Grid voltage 1  [example: 1V = dac60, 10V=dac605, 20V=dac1210, 30V=dac1815, 40V=dac2420, 50V=dac3020]
 #define HV1      3   //Anode voltage 1 [example: 600V=3.97V=adc992   300V=1.98V=adc496    200V=0.76V=330   100V=0.381V=V=adc165]
 #define IA_HI_1  4   //Anode current hi 1
-#define IA_LO_1  5  //Anode current lo 1
+#define IA_LO_1  5   //Anode current lo 1
 #define VG2      6   //Grid voltage 2
 #define HV2      7   //Anode voltage 2
 #define IA_HI_2  8   //Anode current hi 2
@@ -53,6 +54,7 @@ void modeCommand(int index);
 void getCommand(int index);
 void setCommand(int index, int intParam);
 void commandError(const char *command);
+void printValues();
 
 void sendToSlave();
 void masterReceiveData(int howMany);
@@ -65,4 +67,5 @@ void setHeaterVolts();
 void setGridVolts();
 int chargeHighVoltages();
 void dischargeHighVoltages(int bank);
-void doMeasurement(void);
+void doMeasurement();
+void measureValues();

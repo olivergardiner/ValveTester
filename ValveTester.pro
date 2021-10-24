@@ -10,12 +10,14 @@ CONFIG += c++11
 
 SOURCES += \
     command.cpp \
+    ledindicator.cpp \
     main.cpp \
     preferencesdialog.cpp \
     valveanalyser.cpp
 
 HEADERS += \
     command.h \
+    ledindicator.h \
     preferencesdialog.h \
     valveanalyser.h
 

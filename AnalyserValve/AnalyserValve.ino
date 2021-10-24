@@ -86,8 +86,10 @@ void setup() {
     digitalWrite(FIRE2_PIN, LOW);
     digitalWrite(CHARGE1_PIN, LOW);
     digitalWrite(CHARGE2_PIN, LOW);
-    digitalWrite(DISCHARGE1_PIN, HIGH); //make sure capacitor banks are discharged ready for first sweep
-    digitalWrite(DISCHARGE2_PIN, HIGH);
+    //digitalWrite(DISCHARGE1_PIN, HIGH); //make sure capacitor banks are discharged ready for first sweep
+    //digitalWrite(DISCHARGE2_PIN, HIGH);
+    dischargeHighVoltages(1);
+    dischargeHighVoltages(2);
     Wire.begin(MASTER_ADDR);            //Register I2C address
     Wire.onReceive(masterReceiveData);  //Interrupt when I2C data is being received
     digitalWrite(LED_BUILTIN, HIGH);
@@ -141,35 +143,31 @@ void modeCommand(int index) {
       Serial.print("OK: Mode(");
       Serial.print(index);
       Serial.println(')');
+      break;
     case 1: // Discharge high voltages (prep for new sweep)
       dischargeHighVoltages(1);
       dischargeHighVoltages(2);
       Serial.print("OK: Mode(");
       Serial.print(index);
-      Serial.println(')');
+      Serial.print(") ");
+      printValues();
       break;
     case 2: // Run test
       success = runTest();
       if (success > 0) {
-        Serial.print("OK: ");
-        for (int i = 0; i < 10; i++) {
-          Serial.print(measuredValues[i]);
-          if (i < 9) {
-            Serial.print(", ");
-          } else {
-            Serial.println("");
-          }
-        }
+        Serial.print("OK: Mode(");
+        Serial.print(index);
+        Serial.print(") ");
+        printValues();
       }
       break;
     case 3: // Prepare HV (for debugging)
       success = chargeHighVoltages();
       if (success > 0) {
-        Serial.print("OK: ");
-        Serial.print(measuredValues[HV1]);
-        Serial.print(", ");
-        Serial.print(measuredValues[HV2]);
-        Serial.println("");
+        Serial.print("OK: Mode(");
+        Serial.print(index);
+        Serial.print(") ");
+        printValues();
       }
       break;
     case 4: // Prepare HV and apply (for debugging)
@@ -177,10 +175,19 @@ void modeCommand(int index) {
       if (success > 0) {
         digitalWrite(FIRE1_PIN, HIGH);    //Apply high voltage to the DUT
         digitalWrite(FIRE2_PIN, HIGH);
+        measureValues();
         Serial.print("OK: Mode(");
         Serial.print(index);
-        Serial.println(')');
+        Serial.print(") ");
+        printValues();
       }
+      break;
+    case 5: // Return all measured values
+      measureValues();
+      Serial.print("OK: Mode(");
+      Serial.print(index);
+      Serial.print(") ");
+      printValues();
       break;
     default:
       success = -ERR_INVALID_MODE;
@@ -191,15 +198,19 @@ void modeCommand(int index) {
     Serial.print("ERR: ");
     Serial.print(errorMessages[-success]);
     Serial.print(" - ");
-    for (int i = 0; i < 10; i++) {
-      Serial.print(measuredValues[i]);
-      if (i < 9) {
-        Serial.print(", ");
-      } else {
-        Serial.println("");
-      }
-    }
+    printValues();
   }
+}
+
+void printValues() {
+  for (int i = 0; i < 10; i++) {
+    Serial.print(measuredValues[i]);
+    if (i < 9) {
+      Serial.print(", ");
+    } else {
+      Serial.println("");
+    }
+  }  
 }
 
 /************************************************************
@@ -254,6 +265,8 @@ void setCommand(int index, int intParam) {
    Callback for Get commands
  ************************************************************/
 void getCommand(int index) {
+  measureValues();
+  
   if (index >= 0 && index <= 9) {
     Serial.print("OK: Get(");
     Serial.print(index);
@@ -438,39 +451,49 @@ int chargeHighVoltages() { //Manages the HV supply
   digitalWrite(CHARGE2_PIN, LOW);
   digitalWrite(DISCHARGE1_PIN, LOW);
   digitalWrite(DISCHARGE2_PIN, LOW);
+
   measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
+
   if (measuredValues[HV1] > targetValues[HV1]) {     //Check if our start condition is overvoltage
     dischargeHighVoltages(1);                        //If so, discharge it manually as it may take a while to settle through leakage
     measuredValues[HV1] = analogRead(VA1_PIN);       //Measure the high voltage and store the value
   }
-  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
   if (measuredValues[HV2] > targetValues[HV2]) {     //Check if our start condition is overvoltage
     dischargeHighVoltages(2);                        //If so, discharge it manually as it may take a while to settle through leakage
     measuredValues[HV2] = analogRead(VA2_PIN);       //Measure the high voltage and store the value
   }
+                                                                                                                 
   //While either storage cap is not charged to the correct voltage, alternately charge each cap
   //NB: Both cannot be charged simultaneously or one may hold down the supply to the other.
+  int timeout1 = 0;
   while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
-    int timeout = 0;
+    int timeout2 = 0;
     while (measuredValues[HV1] < (targetValues[HV1] - 0)) { //If voltage is too low, charge capacitor
       digitalWrite(CHARGE1_PIN, HIGH);
       measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
-      if (timeout++ > HT_TIMEOUT) {
+      if (timeout2++ > HT_TIMEOUT) {
         return -ERR_HT_TIMEOUT;
       }
     }
     digitalWrite(CHARGE1_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
 
-    timeout = 0;
+    timeout2 = 0;
     measuredValues[HV2] = analogRead(VA2_PIN);          //Measure the high voltage and store the value
     while (measuredValues[HV2] < (targetValues[HV2] - 0)) { //If voltage is too low, charge capacitor
       digitalWrite(CHARGE2_PIN, HIGH);
       measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
+      if (timeout2++ > HT_TIMEOUT) {
+        return -ERR_HT_TIMEOUT;
+      }
     }
     digitalWrite(CHARGE2_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
+    
     measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
-
-    if (timeout++ > HT_TIMEOUT) {
+    
+    if (timeout1++ > HT_TIMEOUT) {
       return -ERR_HT_TIMEOUT;
     }
   }
@@ -482,38 +505,28 @@ int chargeHighVoltages() { //Manages the HV supply
   Takes a measurement and puts the results in the measuredValues[] array
 ****************************************************************************/
 void doMeasurement(void) {
-  int volts1;
-  int amps1_hi;
-  int amps1_lo;
-  int volts2;
-  int amps2_hi;
-  int amps2_lo;
   digitalWrite(FIRE1_PIN, HIGH);    //Apply high voltage to the DUT
   digitalWrite(FIRE2_PIN, HIGH);
 
-  delayMicroseconds(300);
-
-  volts1 = analogRead(VA1_PIN);  //Read ADC twice to introduce some delay and avoid glitches
-  volts1 = analogRead(VA1_PIN);
-  amps2_hi = analogRead(IA2_HI_PIN);
-  amps2_hi = analogRead(IA2_HI_PIN);
-  amps2_lo = analogRead(IA2_LO_PIN);
-  amps2_lo = analogRead(IA2_LO_PIN);
-  amps1_lo = analogRead(IA1_LO_PIN);
-  amps1_lo = analogRead(IA1_LO_PIN);
-  amps1_hi = analogRead(IA1_HI_PIN);
-  amps1_hi = analogRead(IA1_HI_PIN);
-  volts2 = analogRead(VA2_PIN);
-  volts2 = analogRead(VA2_PIN);
-
+  measureValues();
+  
   digitalWrite(FIRE1_PIN, LOW);      //Remove high voltage from the DUT
   digitalWrite(FIRE2_PIN, LOW);
-  measuredValues[HV1] = volts1;
-  measuredValues[IA_HI_1] = amps1_hi;
-  measuredValues[IA_LO_1] = amps1_lo;
-  measuredValues[HV2] = volts2;
-  measuredValues[IA_HI_2] = amps2_hi;
-  measuredValues[IA_LO_2] = amps2_lo;
+}
+
+void measureValues() {
+  measuredValues[HV1] = analogRead(VA1_PIN); // Extra read for delay on switch closure - probably superfluous here
+  measuredValues[HV1] = analogRead(VA1_PIN);
+  measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
+  measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
+  measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+  measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+  
+  measuredValues[HV2] = analogRead(VA2_PIN);
+  measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+  measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+  measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
+  measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
 }
 
 /****************************************************************************
@@ -524,13 +537,23 @@ void dischargeHighVoltages(int bank) {
     digitalWrite(FIRE1_PIN, LOW);
     digitalWrite(CHARGE1_PIN, LOW);
     digitalWrite(DISCHARGE1_PIN, HIGH);
-    while (analogRead(IA1_HI_PIN)) { //wait until no discharge current is detected
+    measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN); // Needs some delay for the switch to close
+    measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
+    measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+    while (analogRead(IA1_HI_PIN) > 0) { //wait until no discharge current is detected
+    //while (analogRead(VA1_PIN) > 0) { //wait until no appreciable voltage is detected
     }
+    digitalWrite(DISCHARGE1_PIN, LOW);
   } else if (bank == 2) {
     digitalWrite(FIRE2_PIN, LOW);
     digitalWrite(CHARGE2_PIN, LOW);
     digitalWrite(DISCHARGE2_PIN, HIGH);
-    while (analogRead(IA2_HI_PIN)) { //wait until no discharge current is detected
+    measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+    measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+    measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
+    while (analogRead(IA2_HI_PIN) > 0) { //wait until no discharge current is detected
+    //while (analogRead(VA2_PIN) > 0) { //wait until no appreciable voltage is detected
     }
+    digitalWrite(DISCHARGE2_PIN, LOW);
   }
 }

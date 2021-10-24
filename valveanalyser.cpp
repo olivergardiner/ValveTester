@@ -18,14 +18,39 @@ ValveAnalyser::ValveAnalyser(QWidget *parent)
     ui->deviceType->addItem("Double Triode", TRIODE);
     ui->deviceType->addItem("Diode", DIODE);
 
-    on_deviceType_currentIndexChanged(0); // Force set up of Device Type
+    // Default test parameters
+    ui->deviceType->setCurrentIndex(1); // Default to Triode anode test with ECC83/12AX7
+    ui->heaterVoltage->setText("6.3");
+    ui->anodeStart->setText("0");
+    ui->anodeStop->setText("300");
+    ui->gridStart->setText("0");
+    ui->gridStop->setText("4");
+    ui->gridStep->setText("0.5");
+    ui->pMax->setText("1.125");
+    ui->iaMax->setText("5");
+
+    on_deviceType_currentIndexChanged(1);
     on_testType_currentIndexChanged(0);
+    heaterVoltage = 6.3;
+    anodeStart = 0;
+    anodeStop = 300;
+    gridStart = 0;
+    gridStop = 4;
+    gridStep = 0.5;
+    pMax = 1.125; // Max anode power dissipation (W)
+    iaMax = 5.0; // Max anode current (mA)
 
     ui->runButton->setEnabled(false);
 
     ui->progressBar->setRange(0, 100);
     ui->progressBar->reset();
     ui->progressBar->setVisible(false);
+
+    heaterIndicator = new LedIndicator();
+    heaterIndicator->setOffColor(QColorConstants::LightGray);
+    ui->heaterLayout->addWidget(heaterIndicator);
+
+    ui->graphicsView->setScene(&scene);
 
     connect(&serialPort, &QSerialPort::readyRead, this, &ValveAnalyser::handleReadyRead);
     connect(&serialPort, &QSerialPort::errorOccurred, this, &ValveAnalyser::handleError);
@@ -119,13 +144,13 @@ void ValveAnalyser::checkResponse(QString response)
             measuredHeaterVoltage = convertMeasuredVoltage(HEATER, value);
             //measuredHeaterVoltage += convertMeasuredVoltage(HEATER, value);
             //measuredHeaterVoltage /= 2.0;
-            QString vh = QString {"%1"}.arg(measuredHeaterVoltage, -5, 'f', 2, '0');
+            QString vh = QString {"%1"}.arg(measuredHeaterVoltage, -6, 'f', 3, '0');
             ui->heaterVlcd->display(vh);
         } else if (variable == IH) {
             measuredHeaterCurrent = convertMeasuredCurrent(HEATER, value);
             //measuredHeaterCurrent += convertMeasuredCurrent(HEATER, value);
             //measuredHeaterCurrent /= 2.0;
-            QString ih = QString {"%1"}.arg(measuredHeaterCurrent, -5, 'f', 2, '0');
+            QString ih = QString {"%1"}.arg(measuredHeaterCurrent, -6, 'f', 3, '0');
             ui->heaterIlcd->display(ih);
         }
     }
@@ -225,6 +250,143 @@ void ValveAnalyser::stopTest()
 
 }
 
+void ValveAnalyser::doPlot()
+{
+    switch (test) {
+    case ANODE_CHARACTERISTICS:
+        plotAnode();
+        break;
+    default:
+        break;
+    }
+}
+
+void ValveAnalyser::plotAnode()
+{
+    QRegularExpression matcher(R"(^OK: Mode\(2\) (\d+), (\d+), (\d+), (\d+), (\d+), (\d+), (\d+), (\d+), (\d+), (\d+))");
+    QList<double> gridValues;
+    QList<QList<double>> anodeVoltageValues;
+    QList<QList<double>> anodeCurrentValues;
+
+    double maxVoltage = 0.0;
+    double maxCurrent = 0.0;
+    double majorVDivision = 25.0;
+    double minorVDivision = 5.0;
+    double majorIDivision = 1.0;
+    double minorIDivision = 0.1;
+
+    // First parse the results and establish axes
+    int sweeps = sweepResult.length();
+    for (int i = 0; i < sweeps; i++) {
+        QList<QString> thisSweep = sweepResult.at(i);
+
+        QString sample = thisSweep.at(0);
+        QRegularExpressionMatch match = matcher.match(sample);
+        double gridVoltage = convertMeasuredVoltage(GRID, match.captured(3).toInt());
+        gridValues.append(gridVoltage);
+        QList<double> anodeVoltageSweep;
+        QList<double> anodeCurrentSweep;
+
+        int samples = thisSweep.length();
+        for (int j = 0; j < samples; j++) {
+            sample = thisSweep.at(j);
+            match = matcher.match(sample);
+
+            double anodeVoltage = convertMeasuredVoltage(ANODE, match.captured(4).toInt());
+            double anodeCurrent = convertMeasuredCurrent(ANODE, match.captured(5).toInt(), match.captured(6).toInt()) * 1000;
+
+            if (anodeVoltage > maxVoltage) {
+                maxVoltage = anodeVoltage;
+            }
+
+            if (anodeCurrent > maxCurrent) {
+                maxCurrent = anodeCurrent;
+            }
+
+            anodeVoltageSweep.append(anodeVoltage);
+            anodeCurrentSweep.append(anodeCurrent);
+        }
+        if (samples > 2) {
+            anodeVoltageValues.append(anodeVoltageSweep);
+            anodeCurrentValues.append(anodeCurrentSweep);
+        }
+    }
+
+    if (maxCurrent > 20.0) {
+        majorIDivision = 10.0;
+        minorIDivision = 1.0;
+    }
+
+    double iaAxisMax = (((int) (maxCurrent / majorIDivision)) + 1) * majorIDivision; // Over 20mA we plot the Ia axis in steps of 10mA
+    double iaScale = PLOT_HEIGHT / iaAxisMax;
+
+    double vaAxisMax = (((int) (maxVoltage / majorVDivision)) + 2) * majorVDivision;
+    double vaScale = PLOT_WIDTH / vaAxisMax;
+
+    scene.clear();
+
+    //scene.addLine(0, 0, 0, 500); // Y axis
+    //scene.addLine(0, 0, 500, 0); // X axis
+
+    double va = 0.0;
+    bool doLabel = true;
+    while (va <= vaAxisMax) {
+        scene.addLine(va * vaScale, 0, va * vaScale, PLOT_HEIGHT);
+
+        if (doLabel) { // Label every other Va scale point
+            QGraphicsTextItem *text;
+            char labelText[16];
+            sprintf(labelText, "%d", (int) (va + 0.5));
+            text = scene.addText(labelText);
+            double offset = 6.0 * strlen(labelText);
+            text->setPos(va * vaScale - offset, PLOT_HEIGHT + 10);
+        }
+
+        doLabel = !doLabel;
+        va += majorVDivision;
+    }
+
+    double ia = 0;
+    while (ia <= iaAxisMax) {
+        scene.addLine(0, (iaAxisMax - ia) * iaScale, PLOT_WIDTH, (iaAxisMax - ia) * iaScale);
+
+        QGraphicsTextItem *text;
+        char labelText[16];
+        sprintf(labelText, "%d", (int) (ia + 0.5));
+        text = scene.addText(labelText);
+        double offset = 12.0 * strlen(labelText);
+        text->setPos(-10 - offset, (iaAxisMax - ia) * iaScale - 10);
+
+        ia += majorIDivision;
+    }
+
+    for (int i = 0; i < sweeps; i++) {
+        double vg = gridValues.at(i);
+        QList<double> anodeVoltageSweep = anodeVoltageValues.at(i);
+        QList<double> anodeCurrentSweep = anodeCurrentValues.at(i);
+
+        va = anodeVoltageSweep.at(0);
+        ia = anodeCurrentSweep.at(0);
+
+        int samples = anodeVoltageSweep.length();
+        for (int j = 1; j < samples; j++) {
+            double vaNext = anodeVoltageSweep.at(j);
+            double iaNext = anodeCurrentSweep.at(j);
+
+            scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale);
+
+            va = vaNext;
+            ia = iaNext;
+        }
+
+        QGraphicsTextItem *text;
+        char labelText[16];
+        sprintf(labelText, "%.1fv", vg + 0.04);
+        text = scene.addText(labelText);
+        text->setPos(va * vaScale + 5, (iaAxisMax - ia) * iaScale - 10);
+    }
+}
+
 void ValveAnalyser::startTest()
 {
     // Clear down the previous result set
@@ -234,6 +396,7 @@ void ValveAnalyser::startTest()
     isStopRequested = false;
     isTestAborted = false;
     isTestRunning = true;
+    endSweep = false;
 
     switch (test) {
     case ANODE_CHARACTERISTICS:
@@ -241,14 +404,6 @@ void ValveAnalyser::startTest()
         stepCommandPrefix = "S2 ";
         sweepType = ANODE;
         sweepCommandPrefix = "S3 ";
-
-        // Forced values for testing
-        //anodeStart = 0;
-        //anodeStop = 300;
-        //gridStart = 0;
-        //gridStop = 1.0;
-        //gridStep = 0.5;
-        //screenStart = 250;
 
         steppedSweep(anodeStart, anodeStop, gridStart, gridStop, gridStep);
 
@@ -288,7 +443,7 @@ void ValveAnalyser::updateTest()
 }
 
 void ValveAnalyser::prepareTest() {
-    if (sweepIndex < sweepParameter.at(stepIndex).length()) {
+    if (!endSweep && sweepIndex < sweepParameter.at(stepIndex).length()) {
         // Run the next value in the sweep
         setupCommands.append(buildSetCommand(sweepCommandPrefix, sweepParameter.at(stepIndex).at(sweepIndex)));
         updateTest();
@@ -296,8 +451,11 @@ void ValveAnalyser::prepareTest() {
     } else { // We've reached the end of this sweep so onto the next step
         stepIndex++;
         sweepIndex = 0;
-        sweepResult.append(*currentSweep);
-        currentSweep = new QList<QString>;
+        endSweep = false;
+        if (!currentSweep->isEmpty()) {
+            sweepResult.append(*currentSweep);
+            currentSweep = new QList<QString>;
+        }
 
         if (stepIndex < stepParameter.length()) {
             setupCommands.append("M1"); // Discharge the capacitor banks at the end of a sweep (or it may take a while)
@@ -315,6 +473,8 @@ void ValveAnalyser::prepareTest() {
                 commandBuffer.first().send(this);
                 commandBuffer.removeFirst();
             }
+
+            doPlot();
         }
     }
 
@@ -351,6 +511,23 @@ void ValveAnalyser::checkTestResponse(QString response)
             // Prepare the next test
             isMeasurement = false;
             setupCommands.clear(); // Just in case;
+
+            // Check whether response exceeds current or power limits
+            QRegularExpression matcher(R"(^OK: Mode\(2\) (\d+), (\d+)\, (\d+)\, (\d+)\, (\d+)\, (\d+)\, (\d+)\, (\d+)\, (\d+)\, (\d+))");
+            QRegularExpressionMatch match = matcher.match(response);
+            double anodeVoltage = convertMeasuredVoltage(ANODE, match.captured(4).toInt());
+            double anodeCurrent = convertMeasuredCurrent(ANODE, match.captured(5).toInt(), match.captured(6).toInt());
+
+            message = QString {"Anode voltage: %1v"}.arg(anodeVoltage, 6, 'f', 1, '0' );
+            qInfo(message.toStdString().c_str());
+            message = QString {"Anode current: %1A"}.arg(anodeCurrent, 6, 'f', 4, '0' );
+            qInfo(message.toStdString().c_str());
+
+            if ((anodeCurrent * 1000) > iaMax || (anodeCurrent * anodeVoltage) > pMax) {
+                endSweep = true;
+                qInfo("Ending sweep");
+            }
+
             prepareTest();
         } else {
             updateTest();
@@ -462,19 +639,17 @@ void ValveAnalyser::steppedSweep(double sweepStart, double sweepStop, double ste
     stepIndex = 0;
     sweepIndex = 0;
 
-    while (stepVoltage <= stepStop) {
+    while (stepVoltage <= (stepStop + 0.01)) {
         stepParameter.append(convertTargetVoltage(stepType, stepVoltage));
 
         QList<int> thisSweep;
-        QList<QString> results;
 
-        for (double sweep = 0.0; sweep <= 1.0; sweep += increment) {
+        for (double sweep = 0.0; sweep <= 1.01; sweep += increment) {
             double sweepVoltage = sweepStart + (sweepStop - sweepStart) * sampleFunction(sweep);
             thisSweep.append(convertTargetVoltage(sweepType, sweepVoltage));
         }
 
         sweepParameter.append(thisSweep);
-        sweepResult.append(results);
 
         stepVoltage += step;
     }
@@ -486,6 +661,105 @@ double ValveAnalyser::sampleFunction(double linearValue)
 
     // For now, is just linear
     return linearValue;
+}
+
+double ValveAnalyser::updateVoltage(QLineEdit *input, double oldValue, int electrode)
+{
+    double value = checkDoubleValue(input, oldValue);
+
+    switch (electrode) {
+    case HEATER:
+        if (value > 16.0) {
+            value = 16.0;
+        }
+        break;
+    case GRID:
+        if (value > 66.0) {
+            value = 66.0;
+        }
+        break;
+    case ANODE:
+    case SCREEN:
+        if (value > 540.0) {
+            value = 540.0;
+        }
+        break;
+    default:
+        break;
+    }
+
+    updateDoubleValue(input, value);
+
+    return value;
+}
+
+double ValveAnalyser::updatePMax()
+{
+    double value = checkDoubleValue(ui->pMax, pMax);
+
+    if (value > 50.0) {
+        value = 50.0;
+    }
+
+    updateDoubleValue(ui->pMax, value);
+    pMax = value;
+
+    return value;
+}
+
+double ValveAnalyser::updateIaMax()
+{
+    double value = checkDoubleValue(ui->iaMax, iaMax);
+
+    if (value > 200.0) {
+        value = 200.0;
+    }
+
+    updateDoubleValue(ui->iaMax, value);
+    iaMax = value;
+
+    return value;
+}
+
+double ValveAnalyser::checkDoubleValue(QLineEdit *input, double oldValue)
+{
+    float parsedValue;
+
+    const char *value = _strdup(input->text().toStdString().c_str());
+
+    int n = sscanf_s(value, "%f.3", &parsedValue, strlen(value));
+
+    if (n < 1) {
+        return oldValue;
+    }
+
+    if (parsedValue < 0) {
+        return 0.0;
+    }
+
+    return parsedValue;
+}
+
+void ValveAnalyser::updateDoubleValue(QLineEdit *input, double value)
+{
+    char number[32];
+
+    sprintf(number, "%.3f", value);
+
+    int length = strlen(number);
+    for (int i=length-1;i >= 0; i--) {
+        char test = number[i];
+        if (test == '0' || test == '.') {
+            number[i] = 0;
+        }
+
+        if (test != '0') {
+            break;
+        }
+    }
+
+    input->setText(number);
+
 }
 
 void ValveAnalyser::handleReadyRead()
@@ -556,8 +830,8 @@ void ValveAnalyser::on_heaterButton_clicked()
 {
     heaters = !heaters;
 
-    ui->heaterButton->setText(heaters ? "Heaters On" : "Heaters Off");
-    ui->heaterButton->setChecked(heaters);
+    //ui->heaterButton->setChecked(heaters);
+    heaterIndicator->setState(heaters);
     ui->runButton->setEnabled(heaters);
 
     if (heaters) {
@@ -692,59 +966,13 @@ void ValveAnalyser::on_heaterVoltage_editingFinished()
     heaterVoltage = updateVoltage(ui->heaterVoltage, heaterVoltage, HEATER);
 }
 
-double ValveAnalyser::updateVoltage(QLineEdit *input, double oldValue, int electrode)
+void ValveAnalyser::on_iaMax_editingFinished()
 {
-    float parsedValue;
+    updateIaMax();
+}
 
-    const char *value = _strdup(input->text().toStdString().c_str());
 
-    int n = sscanf_s(value, "%f", &parsedValue, strlen(value));
-
-    if (n < 1) {
-        parsedValue = oldValue;
-    }
-
-    if (parsedValue < 0) {
-        parsedValue = 0.0;
-    }
-    switch (electrode) {
-    case HEATER:
-        if (parsedValue > 20.0) {
-            parsedValue = 20.0;
-        }
-        break;
-    case GRID:
-        if (parsedValue > 66.0) {
-            parsedValue = 66.0;
-        }
-        break;
-    case ANODE:
-    case SCREEN:
-        if (parsedValue > 540.0) {
-            parsedValue = 540.0;
-        }
-        break;
-    default:
-        break;
-    }
-
-    char number[32];
-
-    sprintf(number, "%.2f", parsedValue);
-
-    int length = strlen(number);
-    for (int i=length-1;i >= 0; i--) {
-        char test = number[i];
-        if (test == '0' || test == '.') {
-            number[i] = 0;
-        }
-
-        if (test != '0') {
-            break;
-        }
-    }
-
-    input->setText(number);
-
-    return parsedValue;
+void ValveAnalyser::on_pMax_editingFinished()
+{
+    updatePMax();
 }

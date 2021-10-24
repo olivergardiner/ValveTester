@@ -11,9 +11,12 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
+#include <QGraphicsScene>
+#include <QGraphicsTextItem>
 
 #include "preferencesdialog.h"
 #include "command.h"
+#include "ledindicator.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
 #define IH       1   //Heater current
@@ -25,6 +28,9 @@
 #define HV2      7   //Anode voltage 2
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
+
+#define PLOT_WIDTH 430
+#define PLOT_HEIGHT 370
 
 enum eDevice {
     PENTODE,
@@ -103,8 +109,15 @@ private slots:
 
     void on_heaterVoltage_editingFinished();
 
+    void on_iaMax_editingFinished();
+
+    void on_pMax_editingFinished();
+
 private:
     Ui::ValveAnalyser *ui;
+
+    LedIndicator *heaterIndicator;
+    QGraphicsScene scene;
 
     QList<QSerialPortInfo> serialPorts;
     QString port = "COM1";
@@ -135,6 +148,9 @@ private:
     double screenStart;
     double screenStop;
     double screenStep;
+
+    double iaMax;
+    double pMax;
 
     bool heaters = false;
 
@@ -174,6 +190,7 @@ private:
     bool isStopRequested;
     bool isTestRunning = false;
     bool isTestAborted;
+    bool endSweep;
     QFile *logFile;
 
     void log(QString message);
@@ -181,6 +198,8 @@ private:
     QString buildSetCommand(QString command, int value);
     void startTest();
     void stopTest();
+    void doPlot();
+    void plotAnode();
     void updateTest();
     void prepareTest();
     void abortTest();
@@ -194,6 +213,10 @@ private:
     double sampleFunction(double linearValue);
 
     double updateVoltage(QLineEdit *input, double oldValue, int electrode);
+    double updatePMax();
+    double updateIaMax();
+    double checkDoubleValue(QLineEdit *input, double oldValue);
+    void updateDoubleValue(QLineEdit *input, double value);
 };
 
 #endif // VALVEANALYSER_H
