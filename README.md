@@ -81,4 +81,4 @@ For high resolution (low current) sensing, we want to measure the voltage droppe
 
 Once the Anode/Screen current has reached a value that makes low current sensing unwise, the high current sensing can be used instead. With a sense resistance of 3R333 in stead of 33R333, the scale factor simply changes by a factor of 10 so a full scale measurement now corresponds to a current of 614mA. Such a current would actually blow our power budget for the 10R resistors but finding a working device that would deliver such a current would be a challenge and the capacitor banks can only deliver a finite charge, thus providing a natural back stop.
 
-
+This project includes the qt5-led-indicator-widget (under LGPL v2.1) by Kiril Gruncharov: https://github.com/melanholly/qt5-led-indicator-widget
