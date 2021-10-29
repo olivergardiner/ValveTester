@@ -120,7 +120,7 @@ void ValveAnalyser::sendCommand(QString command, void (ValveAnalyser::*read)(QSt
     serialPort.write(c);
     serialPort.write("\r\n");
 
-    timeoutTimer.start(5000);
+    timeoutTimer.start(15000);
     awaitingResponse = true;
 }
 
@@ -458,7 +458,7 @@ void ValveAnalyser::prepareTest() {
         }
 
         if (stepIndex < stepParameter.length()) {
-            setupCommands.append("M1"); // Discharge the capacitor banks at the end of a sweep (or it may take a while)
+            //setupCommands.append("M1"); // Discharge the capacitor banks at the end of a sweep (or it may take a while)
             setupCommands.append(buildSetCommand(stepCommandPrefix, stepParameter.at(stepIndex)));
             setupCommands.append(buildSetCommand(sweepCommandPrefix, sweepParameter.at(stepIndex).at(sweepIndex)));
             updateTest();
@@ -466,7 +466,7 @@ void ValveAnalyser::prepareTest() {
             // We've reached the end of the test!
             ui->runButton->setChecked(false);
             ui->progressBar->setVisible(false);
-            sendCommand("M1");
+            sendCommand("M0");
             isTestRunning = false;
 
             if (!commandBuffer.isEmpty()) { // There is a command to send
@@ -658,9 +658,29 @@ void ValveAnalyser::steppedSweep(double sweepStart, double sweepStop, double ste
 double ValveAnalyser::sampleFunction(double linearValue)
 {
     // Converts a linear % value to a transformed % value to concentrate sweep sample points where there is most change
+    if (mode == TRIODE && test == ANODE_CHARACTERISTICS) { // A triode may start to conduct at any anode voltage so we can't predict where the "bend" will be...
+        return linearValue; // ...so a linear sampling is best
+    } else if (mode == PENTODE && test == ANODE_CHARACTERISTICS) { // A Pentode has a knee as the anode voltage rises from 0v...
+        // ...so we want more smaples early on - the code below uses the profile of a log pot to do the necessary bending
 
-    // For now, is just linear
-    return linearValue;
+        // From: https://electronics.stackexchange.com/questions/304692/formula-for-logarithmic-audio-taper-pot
+        // y = a.b^x - a
+        // b = ((1 / ym) - 1)^2
+        // a = 1 / (b - 1)
+
+        //double b = pow((1.0 / ym) - 1.0, 2);
+
+        double ym = 0.2;
+
+        double b = ((1.0 / ym) - 1.0);
+        b = b * b;
+
+        double a = 1 / (b - 1.0);
+
+        return a * pow(b, linearValue) - a;
+    }
+
+    return linearValue; // Backstop is to return linear sampling
 }
 
 double ValveAnalyser::updateVoltage(QLineEdit *input, double oldValue, int electrode)

@@ -96,6 +96,7 @@ void setup() {
     setGridVolts();
   }
   else { // else this is SLAVE hardware
+    pinMode(PWM_PIN, OUTPUT);
     pinMode(LV_DETECT_PIN, INPUT);
     analogWrite(PWM_PIN, 0);            //Set heater to 0V at start-up
     Wire.begin(SLAVE_ADDR);             //Register I2C address
@@ -447,8 +448,13 @@ void setGridVolts() {
 int chargeHighVoltages() { //Manages the HV supply
   digitalWrite(FIRE1_PIN, LOW);                       //Turn off MOSFETs (fail-safe measure)
   digitalWrite(FIRE2_PIN, LOW);
-  digitalWrite(CHARGE1_PIN, LOW);
+#ifdef WIZARD_MODE
+  digitalWrite(CHARGE1_PIN, LOW); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
   digitalWrite(CHARGE2_PIN, LOW);
+#else
+  analogWrite(CHARGE1_PIN, 0); // If we're in PWM mode then set the duty cycle for the charge pins to 0
+  analogWrite(CHARGE2_PIN, 0);
+#endif // WIZARD_MODE
   digitalWrite(DISCHARGE1_PIN, LOW);
   digitalWrite(DISCHARGE2_PIN, LOW);
 
@@ -456,49 +462,108 @@ int chargeHighVoltages() { //Manages the HV supply
   measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
   measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
   measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
-
-  if (measuredValues[HV1] > targetValues[HV1]) {     //Check if our start condition is overvoltage
+  
+  if (measuredValues[HV1] > (targetValues[HV1] + OVERVOLTAGE)) {     //Check if our start condition is overvoltage
     dischargeHighVoltages(1);                        //If so, discharge it manually as it may take a while to settle through leakage
     measuredValues[HV1] = analogRead(VA1_PIN);       //Measure the high voltage and store the value
   }
-  if (measuredValues[HV2] > targetValues[HV2]) {     //Check if our start condition is overvoltage
+  if (measuredValues[HV2] > (targetValues[HV2] + OVERVOLTAGE)) {     //Check if our start condition is overvoltage
     dischargeHighVoltages(2);                        //If so, discharge it manually as it may take a while to settle through leakage
     measuredValues[HV2] = analogRead(VA2_PIN);       //Measure the high voltage and store the value
   }
-                                                                                                                 
+
   //While either storage cap is not charged to the correct voltage, alternately charge each cap
   //NB: Both cannot be charged simultaneously or one may hold down the supply to the other.
   int timeout1 = 0;
-  while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
+
+  //while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
+  while (!checkAnodeVoltage(measuredValues[HV1], targetValues[HV1]) || !checkAnodeVoltage(measuredValues[HV2], targetValues[HV2])) {    
     int timeout2 = 0;
-    while (measuredValues[HV1] < (targetValues[HV1] - 0)) { //If voltage is too low, charge capacitor
-      digitalWrite(CHARGE1_PIN, HIGH);
+    while (measuredValues[HV1] < (targetValues[HV1] + OVERVOLTAGE)) { //If voltage is too low, charge capacitor
+#ifdef WIZARD_MODE
+      digitalWrite(CHARGE1_PIN, HIGH); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
+#else
+      int duty = setDuty(measuredValues[HV1], targetValues[HV1]);
+      analogWrite(CHARGE1_PIN, duty); // If we're in PWM mode then set the duty cycle according to the (inverse) voltage gap
+#endif // WIZARD_MODE
       measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
       if (timeout2++ > HT_TIMEOUT) {
+#ifdef WIZARD_MODE
+        digitalWrite(CHARGE1_PIN, LOW);
+#else
+        analogWrite(CHARGE1_PIN, 0);
+#endif
         return -ERR_HT_TIMEOUT;
       }
     }
-    digitalWrite(CHARGE1_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
-
+#ifdef WIZARD_MODE
+    digitalWrite(CHARGE1_PIN, LOW); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
+#else
+    analogWrite(CHARGE1_PIN, 0); // If we're in PWM mode then set the duty cycle for the charge pins to 0
+#endif // WIZARD_MODE
+                                                                                                                 
     timeout2 = 0;
     measuredValues[HV2] = analogRead(VA2_PIN);          //Measure the high voltage and store the value
-    while (measuredValues[HV2] < (targetValues[HV2] - 0)) { //If voltage is too low, charge capacitor
-      digitalWrite(CHARGE2_PIN, HIGH);
+    while (measuredValues[HV2] < (targetValues[HV2] + OVERVOLTAGE)) { //If voltage is too low, charge capacitor
+#ifdef WIZARD_MODE
+      digitalWrite(CHARGE2_PIN, HIGH); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
+#else
+      int duty = setDuty(measuredValues[HV2], targetValues[HV2]);
+      analogWrite(CHARGE2_PIN, duty); // If we're in PWM mode then set the duty cycle according to the (inverse) voltage gap
+#endif // WIZARD_MODE
       measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
       if (timeout2++ > HT_TIMEOUT) {
+#ifdef WIZARD_MODE
+        digitalWrite(CHARGE2_PIN, LOW);
+#else
+        analogWrite(CHARGE2_PIN, 0);
+#endif
         return -ERR_HT_TIMEOUT;
       }
     }
-    digitalWrite(CHARGE2_PIN, LOW); //Done, isolate this storage capacitance. It will begin to discharge slowly.
+#ifdef WIZARD_MODE
+    digitalWrite(CHARGE2_PIN, LOW);
+#else
+    analogWrite(CHARGE2_PIN, 0);
+#endif // WIZARD_MODE
     
     measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
     
     if (timeout1++ > HT_TIMEOUT) {
+#ifdef WIZARD_MODE
+      digitalWrite(CHARGE1_PIN, LOW);
+      digitalWrite(CHARGE2_PIN, LOW);
+#else
+      analogWrite(CHARGE1_PIN, 0);
+      analogWrite(CHARGE2_PIN, 0);
+#endif
       return -ERR_HT_TIMEOUT;
     }
   }
 
   return 1;
+}
+
+bool checkAnodeVoltage(int measured, int target) {
+  int gap = measured - target;
+  return gap >= 0 && gap < (2 * OVERVOLTAGE); // This allows us to be on the money or up a little over
+}
+
+int setDuty(int measured, int target) {
+  int measuredGap = target - measured;
+  if (measuredGap >= THRESHOLD) { // If the gap is over the threshold the the duty cycle is minimum to be nice to the resistors 
+    return HV_DUTY_MIN;
+  }
+  double gap = ((double) (THRESHOLD - measuredGap)) / THRESHOLD; // Find out how far below the threshold we are and increase the duty cycle in proportion
+  int duty = (int) (gap * CHARGING_SPEED) + HV_DUTY_MIN;
+  if (duty < HV_DUTY_MIN) {
+    duty = HV_DUTY_MIN;
+  }
+  if (duty > 255) {
+    duty = 255;
+  }
+
+  return duty;
 }
 
 /****************************************************************************
@@ -535,7 +600,11 @@ void measureValues() {
 void dischargeHighVoltages(int bank) {
   if (bank == 1) {
     digitalWrite(FIRE1_PIN, LOW);
-    digitalWrite(CHARGE1_PIN, LOW);
+#ifdef WIZARD_MODE
+    digitalWrite(CHARGE1_PIN, LOW); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
+#else
+    analogWrite(CHARGE1_PIN, 0); // If we're in PWM mode then set the duty cycle for the charge pins to 0
+#endif // WIZARD_MODE
     digitalWrite(DISCHARGE1_PIN, HIGH);
     measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN); // Needs some delay for the switch to close
     measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
@@ -546,7 +615,11 @@ void dischargeHighVoltages(int bank) {
     digitalWrite(DISCHARGE1_PIN, LOW);
   } else if (bank == 2) {
     digitalWrite(FIRE2_PIN, LOW);
+#ifdef WIZARD_MODE
     digitalWrite(CHARGE2_PIN, LOW);
+#else
+    analogWrite(CHARGE2_PIN, 0);
+#endif // WIZARD_MODE
     digitalWrite(DISCHARGE2_PIN, HIGH);
     measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
     measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);

@@ -12,12 +12,15 @@
 #define DAC2_ADDR 0x61   //I2C Address of other MCP4725; its pin A0 must be pulled HIGH to make address 0x61 (also remove pull-up resistors). Note that the breakout board uses the MCP4725A0.
 //NB: I2C can send 32 ints per transmission.
 
-#define HARDWARE_ID_PIN 12  //High for master, low for slave
-#define VH_PIN A2           //Heater-voltage sense from buck regulator
-#define IH_PIN A3           //Heater-current sense from buck regulator
-#define PWM_PIN 6           //PWM drive signal to buck regulator MOSFET 
-#define CHARGE1_PIN 8        //Drive to high-voltage charge MOSFET
-#define DISCHARGE1_PIN 11     //Drive to high-voltage discharge MOSFET 
+//#define WIZARD_MODE
+
+#define HARDWARE_ID_PIN 12   //High for master, low for slave
+#define VH_PIN A2            //Heater-voltage sense from buck regulator
+#define IH_PIN A3            //Heater-current sense from buck regulator
+#define PWM_PIN 6            //PWM drive signal to buck regulator MOSFET
+//#define CHARGE1_PIN 8        //Drive to high-voltage charge MOSFET
+#define CHARGE1_PIN 9        //Drive to high-voltage charge MOSFET - moved to pin D9 in order to enable PWM
+#define DISCHARGE1_PIN 11    //Drive to high-voltage discharge MOSFET 
 #define FIRE1_PIN 7          //Drive to 'apply high voltage' MOSFET 
 #define VA1_PIN A6           //High voltage sense 1
 #define VA2_PIN A7           //High voltage sense 2
@@ -44,7 +47,11 @@
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
 
-#define HT_TIMEOUT 8000
+#define HT_TIMEOUT 64000
+#define CHARGING_SPEED 43
+#define HV_DUTY_MIN 20 // Don't set too low or pentode tests will struggle
+#define THRESHOLD 50 // 50 corresponds to around 30v - below this we start increasing the duty cycle from min value
+#define OVERVOLTAGE 5 // Plan to overshoot HV a tad to account for leakage
 
 /************************************************************   
 *FUNCTION PROTOTYPES
@@ -66,6 +73,8 @@ int runTest();
 void setHeaterVolts();
 void setGridVolts();
 int chargeHighVoltages();
+bool checkAnodeVoltage(int measured, int target);
+int setDuty(int measured, int target);
 void dischargeHighVoltages(int bank);
 void doMeasurement();
 void measureValues();
