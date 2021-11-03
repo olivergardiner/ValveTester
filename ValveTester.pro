@@ -11,6 +11,7 @@ CONFIG += c++11
 SOURCES += \
     cmpfit/mpfit.c \
     command.cpp \
+    curves.cpp \
     ledindicator.cpp \
     main.cpp \
     preferencesdialog.cpp \
@@ -19,6 +20,7 @@ SOURCES += \
 HEADERS += \
     cmpfit/mpfit.h \
     command.h \
+    curves.h \
     ledindicator.h \
     preferencesdialog.h \
     valveanalyser.h

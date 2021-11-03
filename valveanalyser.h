@@ -13,10 +13,13 @@
 #include <QRegularExpressionMatch>
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
+#include <QColor>
 
 #include "preferencesdialog.h"
 #include "command.h"
 #include "ledindicator.h"
+#include "curves.h"
+#include "cmpfit/mpfit.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
 #define IH       1   //Heater current
@@ -51,6 +54,8 @@ enum eElectrode {
     GRID,
     SCREEN
 };
+
+extern double (*curveFunction)(double va, double vg, int n, double *p);
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class ValveAnalyser; }
@@ -157,6 +162,8 @@ private:
     double vRefMaster = 4.096;
     double vRefSlave = 2.048;
 
+    int sweepPoints = 40;
+
     void checkComPorts();
 
     void sendCommand(QString command);
@@ -186,7 +193,6 @@ private:
     int sweepType;
     QString stepCommandPrefix;
     QString sweepCommandPrefix;
-    int sweepPoints = 20;
     bool isStopRequested;
     bool isTestRunning = false;
     bool isTestAborted;
@@ -200,6 +206,11 @@ private:
     void stopTest();
     void doPlot();
     void plotAnode();
+    int initSimpleTriode(double vg, double *parameters, mp_par *constraints);
+    int initKorenTriode(double vg, double *parameters, mp_par *constraints);
+    int initKorenPentode(double vg, double *parameters, mp_par *constraints);
+    int initDerkPentode(double vg, double *parameters, mp_par *constraints);
+    int initDerkEPentode(double vg, double *parameters, mp_par *constraints);
     void updateTest();
     void prepareTest();
     void abortTest();

@@ -17,7 +17,7 @@ int slaveCounter = 0;
 double vHeater = 0; // Persistent value used for rolling averaging
 double iHeater = 0; // Persistent value used for rolling averaging
 
-#define AVG_FACTOR 0.95
+#define AVG_FACTOR 0.99
 
 int duty_cycle = 0;      //Duty cycle of buck converter
 boolean hardware;         //Will be set to 1 if hardware ID pin is high (MASTER), else 0 (SLAVE).
@@ -145,7 +145,7 @@ void modeCommand(int index) {
       Serial.print(index);
       Serial.println(')');
       break;
-    case 1: // Discharge high voltages (prep for new sweep)
+    case 1: // Discharge high voltages
       dischargeHighVoltages(1);
       dischargeHighVoltages(2);
       Serial.print("OK: Mode(");
@@ -488,19 +488,12 @@ int chargeHighVoltages() { //Manages the HV supply
 #endif // WIZARD_MODE
       measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
       if (timeout2++ > HT_TIMEOUT) {
-#ifdef WIZARD_MODE
-        digitalWrite(CHARGE1_PIN, LOW);
-#else
-        analogWrite(CHARGE1_PIN, 0);
-#endif
+        chargeOff();
         return -ERR_HT_TIMEOUT;
       }
     }
-#ifdef WIZARD_MODE
-    digitalWrite(CHARGE1_PIN, LOW); // If we're in Wizard mode we treat the charge pins as digital output (i.e. on or off)
-#else
-    analogWrite(CHARGE1_PIN, 0); // If we're in PWM mode then set the duty cycle for the charge pins to 0
-#endif // WIZARD_MODE
+
+    chargeOff();
                                                                                                                  
     timeout2 = 0;
     measuredValues[HV2] = analogRead(VA2_PIN);          //Measure the high voltage and store the value
@@ -513,30 +506,16 @@ int chargeHighVoltages() { //Manages the HV supply
 #endif // WIZARD_MODE
       measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
       if (timeout2++ > HT_TIMEOUT) {
-#ifdef WIZARD_MODE
-        digitalWrite(CHARGE2_PIN, LOW);
-#else
-        analogWrite(CHARGE2_PIN, 0);
-#endif
+        chargeOff();
         return -ERR_HT_TIMEOUT;
       }
     }
-#ifdef WIZARD_MODE
-    digitalWrite(CHARGE2_PIN, LOW);
-#else
-    analogWrite(CHARGE2_PIN, 0);
-#endif // WIZARD_MODE
+    chargeOff();
     
     measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
     
     if (timeout1++ > HT_TIMEOUT) {
-#ifdef WIZARD_MODE
-      digitalWrite(CHARGE1_PIN, LOW);
-      digitalWrite(CHARGE2_PIN, LOW);
-#else
-      analogWrite(CHARGE1_PIN, 0);
-      analogWrite(CHARGE2_PIN, 0);
-#endif
+      chargeOff();
       return -ERR_HT_TIMEOUT;
     }
   }
@@ -544,13 +523,24 @@ int chargeHighVoltages() { //Manages the HV supply
   return 1;
 }
 
+void chargeOff() {
+#ifdef WIZARD_MODE
+    digitalWrite(CHARGE1_PIN, LOW);
+    digitalWrite(CHARGE2_PIN, LOW);
+#else
+    analogWrite(CHARGE1_PIN, 0);
+    analogWrite(CHARGE2_PIN, 0);
+#endif
+}
+
 bool checkAnodeVoltage(int measured, int target) {
+  // At lower voltages, we could narrow the tolerance band to improve accuracy
   int gap = measured - target;
-  return gap >= 0 && gap < (2 * OVERVOLTAGE); // This allows us to be on the money or up a little over
+  return gap >= 0 && gap < (2 * OVERVOLTAGE); // This allows us to be on the money or a little over
 }
 
 int setDuty(int measured, int target) {
-  int measuredGap = target - measured;
+  int measuredGap = 1023 - measured; // Rather than gap to target, we take the gap to absolute max (as this is the voltage across the charging resistor)
   if (measuredGap >= THRESHOLD) { // If the gap is over the threshold the the duty cycle is minimum to be nice to the resistors 
     return HV_DUTY_MIN;
   }

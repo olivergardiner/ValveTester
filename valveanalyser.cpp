@@ -268,6 +268,18 @@ void ValveAnalyser::plotAnode()
     QList<QList<double>> anodeVoltageValues;
     QList<QList<double>> anodeCurrentValues;
 
+    QList<QList<double>> curves;
+
+    double x[64];
+    double y[64];
+    double e[64];
+    double g[64];
+
+    double xa[1000];
+    double ya[1000];
+    double ea[1000];
+    double ga[1000];
+
     double maxVoltage = 0.0;
     double maxCurrent = 0.0;
     double majorVDivision = 25.0;
@@ -275,8 +287,27 @@ void ValveAnalyser::plotAnode()
     double majorIDivision = 1.0;
     double minorIDivision = 0.1;
 
+    mp_config curveConfig;
+    curveConfig.ftol = 0.0;
+    curveConfig.xtol = 0.0;
+    curveConfig.gtol = 0.0;
+    curveConfig.epsfcn = 0.0;
+    curveConfig.stepfactor = 0.0;
+    curveConfig.covtol = 0.0;
+    curveConfig.maxiter = 1000;
+    curveConfig.maxfev = 0;
+    curveConfig.douserscale = 0;
+    curveConfig.nofinitecheck = 0;
+    curveConfig.iterproc = nullptr;
+
+    mp_result curveResult;
+    double parameters[CRV_MAX_PARAMETERS];
+    mp_par constraints[CRV_MAX_PARAMETERS];
+    int n;
+
     // First parse the results and establish axes
     int sweeps = sweepResult.length();
+    int setIndex = 0;
     for (int i = 0; i < sweeps; i++) {
         QList<QString> thisSweep = sweepResult.at(i);
 
@@ -287,6 +318,7 @@ void ValveAnalyser::plotAnode()
         QList<double> anodeVoltageSweep;
         QList<double> anodeCurrentSweep;
 
+        int curveIndex = 0;
         int samples = thisSweep.length();
         for (int j = 0; j < samples; j++) {
             sample = thisSweep.at(j);
@@ -305,11 +337,72 @@ void ValveAnalyser::plotAnode()
 
             anodeVoltageSweep.append(anodeVoltage);
             anodeCurrentSweep.append(anodeCurrent);
+
+            x[curveIndex] = anodeVoltage;
+            y[curveIndex] = anodeCurrent;
+            e[curveIndex] = 0.2;
+            g[curveIndex] = -(gridVoltage + 0.01);
+            curveIndex++;
+
+            xa[setIndex] = anodeVoltage;
+            ya[setIndex] = anodeCurrent;
+            ea[setIndex] = 0.2;
+            ga[setIndex] = -(gridVoltage + 0.01);
+            setIndex++;
         }
+
         if (samples > 2) {
             anodeVoltageValues.append(anodeVoltageSweep);
             anodeCurrentValues.append(anodeCurrentSweep);
         }
+
+        if (curveIndex > CRV_MAX_PARAMETERS) {
+            n = initKorenTriode(-gridVoltage, parameters, constraints);
+
+            struct curveData data;
+            data.x = x;
+            data.y = y;
+            data.y_error = e;
+            data.g = g;
+
+            memset(&curveResult, 0, sizeof(curveResult));
+            int status = mpfit(&fitCurve, curveIndex, n, parameters, constraints, &curveConfig, &data, &curveResult);
+
+            if (status >= 0) {
+                QList<double> pars;
+                for (int i=0; i < n; i++) {
+                    pars.append(parameters[i]);
+                    QString message = QString {"Parameter (%1): "}.arg(i);
+                    message += QString {"%1 "}.arg(parameters[i], 6, 'g', 5, '0');
+                    qInfo(message.toStdString().c_str());
+                }
+                pars.append(gridVoltage);
+                curves.append(pars);
+            } else {
+                qInfo("Could not fit curve");
+            }
+        }
+    }
+
+    n = initKorenTriode(1.0, parameters, constraints);
+
+    struct curveData data;
+    data.x = xa;
+    data.y = ya;
+    data.y_error = ea;
+    data.g = ga;
+
+    memset(&curveResult, 0, sizeof(curveResult));
+    int status = mpfit(&fitCurve, setIndex, n, parameters, constraints, &curveConfig, &data, &curveResult);
+
+    if (status >= 0) {
+        for (int i=0; i < n; i++) {
+            QString message = QString {"Parameter (%1): "}.arg(i);
+            message += QString {"%1 "}.arg(parameters[i], 6, 'g', 5, '0');
+            qInfo(message.toStdString().c_str());
+        }
+    } else {
+        qInfo("Could not fit data set");
     }
 
     if (maxCurrent > 20.0) {
@@ -360,6 +453,12 @@ void ValveAnalyser::plotAnode()
         ia += majorIDivision;
     }
 
+    QPen samplePen;
+    samplePen.setColor(QColor::fromRgb(0, 0, 0));
+    QPen curvePen;
+    curvePen.setColor(QColor::fromRgb(255, 0, 0));
+
+
     for (int i = 0; i < sweeps; i++) {
         double vg = gridValues.at(i);
         QList<double> anodeVoltageSweep = anodeVoltageValues.at(i);
@@ -373,7 +472,7 @@ void ValveAnalyser::plotAnode()
             double vaNext = anodeVoltageSweep.at(j);
             double iaNext = anodeCurrentSweep.at(j);
 
-            scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale);
+            scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale, samplePen);
 
             va = vaNext;
             ia = iaNext;
@@ -385,6 +484,95 @@ void ValveAnalyser::plotAnode()
         text = scene.addText(labelText);
         text->setPos(va * vaScale + 5, (iaAxisMax - ia) * iaScale - 10);
     }
+
+    int numberCurves = curves.length();
+    for (int i=0; i < numberCurves; i++) {
+        double vg = -gridValues.at(i);
+
+        va = 0;
+        ia = 0;
+        for (int j=0; j < 101; j++) {
+            double vaNext = (maxVoltage * j) / 100.0;
+            double iaNext = curveFunction(vaNext, vg, n, parameters);
+
+            if (ia <= iaAxisMax) {
+                scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale, curvePen);
+            }
+
+            va = vaNext;
+            ia = iaNext;
+        }
+    }
+}
+
+int ValveAnalyser::initSimpleTriode(double vg, double *parameters, mp_par *constraints)
+{
+    parameters[0] = -0.005; // Grid current - start with -5uA
+    setDefaultParameterConstraints(&constraints[0]);
+    constraints[0].limited[0] = true;
+    constraints[0].limited[1] = true;
+    constraints[0].limits[0] = -2.0;
+    constraints[0].limits[1] = 0.0;
+    parameters[1] = 1.70; // G (perveance) - start with 1.7 (rough 12AX7 value)
+    setDefaultParameterConstraints(&constraints[1]);
+    constraints[1].limited[0] = true;
+    constraints[1].limited[1] = false;
+    constraints[1].limits[0] = 0.0;
+    //constraints[1].limits[1] = 10.0;
+    parameters[2] = 1.5; // Alpha - should be 1.5
+    setDefaultParameterConstraints(&constraints[2]);
+    constraints[2].limited[0] = true;
+    constraints[2].limited[1] = true;
+    constraints[2].limits[0] = 1.0;
+    constraints[2].limits[1] = 2.0;
+    parameters[3] = 100.0; // Mu - start in 12AX7 territory
+    setDefaultParameterConstraints(&constraints[3]);
+    constraints[3].limited[0] = true;
+    constraints[3].limited[1] = true;
+    constraints[3].limits[0] = 1.0;
+    constraints[3].limits[1] = 200.0;
+
+    curveFunction = simpleTriodeModel;
+
+    return 4; // Number of parameters
+}
+
+int ValveAnalyser::initKorenTriode(double vg, double *parameters, mp_par *constraints)
+{
+    parameters[0] = 0.0; // kvb
+    setDefaultParameterConstraints(&constraints[0]);
+    constraints->fixed = true;
+    constraints[0].limited[0] = true;
+    constraints[0].limited[1] = true;
+    constraints[0].limits[0] = 0.0;
+    constraints[0].limits[1] = 10.0;
+    parameters[1] = 100.0; // kp (perveance)
+    setDefaultParameterConstraints(&constraints[1]);
+    constraints[1].limited[0] = true;
+    constraints[1].limited[1] = false;
+    constraints[1].limits[0] = 0.01;
+    //constraints[1].limits[1] = 10.0;
+    parameters[2] = 1.5; // Alpha - should be 1.5
+    setDefaultParameterConstraints(&constraints[2]);
+    constraints[2].limited[0] = true;
+    constraints[2].limited[1] = true;
+    constraints[2].limits[0] = 1.0;
+    constraints[2].limits[1] = 2.0;
+    parameters[3] = 100.0; // Mu - start in 12AX7 territory
+    setDefaultParameterConstraints(&constraints[3]);
+    constraints[3].limited[0] = true;
+    constraints[3].limited[1] = true;
+    constraints[3].limits[0] = 1.0;
+    constraints[3].limits[1] = 200.0;
+    parameters[4] = 1.0; // kg (scale factor)
+    setDefaultParameterConstraints(&constraints[4]);
+    constraints[4].limited[0] = true;
+    constraints[4].limited[1] = false;
+    constraints[4].limits[0] = 0.01;
+
+    curveFunction = korenTriodeModel;
+
+    return 5; // Number of parameters
 }
 
 void ValveAnalyser::startTest()
@@ -466,7 +654,7 @@ void ValveAnalyser::prepareTest() {
             // We've reached the end of the test!
             ui->runButton->setChecked(false);
             ui->progressBar->setVisible(false);
-            sendCommand("M0");
+            sendCommand("M1");
             isTestRunning = false;
 
             if (!commandBuffer.isEmpty()) { // There is a command to send
