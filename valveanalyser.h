@@ -15,11 +15,13 @@
 #include <QGraphicsTextItem>
 #include <QColor>
 
+#include <cmath>
+
 #include "preferencesdialog.h"
 #include "command.h"
 #include "ledindicator.h"
-#include "curves.h"
-#include "cmpfit/mpfit.h"
+#include "ceres/ceres.h"
+#include "glog/logging.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
 #define IH       1   //Heater current
@@ -206,11 +208,7 @@ private:
     void stopTest();
     void doPlot();
     void plotAnode();
-    int initSimpleTriode(double vg, double *parameters, mp_par *constraints);
-    int initKorenTriode(double vg, double *parameters, mp_par *constraints);
-    int initKorenPentode(double vg, double *parameters, mp_par *constraints);
-    int initDerkPentode(double vg, double *parameters, mp_par *constraints);
-    int initDerkEPentode(double vg, double *parameters, mp_par *constraints);
+    double korenCurrent(double va, double vg, double kp, double kvb, double a, double mu);
     void updateTest();
     void prepareTest();
     void abortTest();
