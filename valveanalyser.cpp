@@ -272,7 +272,25 @@ struct KorenTriodeResidual {
 
     template <typename T>
     bool operator()(const T* const kg, const T* const kp, const T* const kvb, const T* const a, const T* const mu, T* residual) const {
-        residual[0] = ia_ - pow((va_ / *kp) * log(1.0 + exp(*kp * (1.0 / *mu + vg_ / sqrt(*kvb + va_ * va_)))), *a) / *kg;
+        // residual[0] = ia_ - pow((va_ / kp[0]) * log(1.0 + exp(kp[0] * (1.0 / mu[0] + vg_ / sqrt(kvb[0] + va_ * va_)))), a[0]) / kg[0];
+        T e1t = log(1.0 + exp(kp[0] * (1.0 / mu[0] + vg_ / sqrt(kvb[0] + va_ * va_))));
+        residual[0] = ia_ - pow((va_ / kp[0]) * e1t, a[0]) / kg[0];
+        return true;
+    }
+
+private:
+    const double va_;
+    const double vg_;
+    const double ia_;
+};
+
+struct ImprovedKorenTriodeResidual {
+    ImprovedKorenTriodeResidual(double va, double vg, double ia) : va_(va), vg_(vg), ia_(ia) {}
+
+    template <typename T>
+    bool operator()(const T* const kg, const T* const kp, const T* const kvb, const T* const kvb2, const T* const vct, const T* const a, const T* const mu, T* residual) const {
+        T e2t = log(1.0 + exp(kp[0] * (1.0 / mu[0] + (vg_ + vct[0])/ sqrt(kvb[0] + va_ * va_ + kvb2[0] * va_))));
+        residual[0] = ia_ - pow((va_ / kp[0]) * e2t, a[0]) / kg[0];
         return true;
     }
 
@@ -348,15 +366,25 @@ void ValveAnalyser::plotAnode()
     double cKp = 500.0;
     double cKvb = 100.0;
     double cA = 1.5;
-    double cMu = 70;
+    double cMu = 70.0;
+
+    // For the improved model
+    double cVct = 0.5;
+    double cKvb2 = 10.0;
 
     Problem problem;
     for (int i = 0; i < vaSample.length(); ++i) {
-      problem.AddResidualBlock(
-          new AutoDiffCostFunction<KorenTriodeResidual, 1, 1, 1, 1, 1, 1>(
-              new KorenTriodeResidual(vaSample.at(i), vgSample.at(i), iaSample.at(i))),
-          NULL,
-          &cKg, &cKp, &cKvb, &cA, &cMu);
+        /* problem.AddResidualBlock(
+            new AutoDiffCostFunction<KorenTriodeResidual, 1, 1, 1, 1, 1, 1>(
+                new KorenTriodeResidual(vaSample.at(i), vgSample.at(i), iaSample.at(i))),
+            NULL,
+            &cKg, &cKp, &cKvb, &cA, &cMu); */
+
+        problem.AddResidualBlock(
+            new AutoDiffCostFunction<ImprovedKorenTriodeResidual, 1, 1, 1, 1, 1, 1, 1, 1>(
+                new ImprovedKorenTriodeResidual(vaSample.at(i), vgSample.at(i), iaSample.at(i))),
+            NULL,
+            &cKg, &cKp, &cKvb, &cKvb2, &cVct, &cA, &cMu);
     }
 
     problem.SetParameterLowerBound(&cKg, 0, 0.0000001); // Kg > 0
@@ -367,6 +395,12 @@ void ValveAnalyser::plotAnode()
     problem.SetParameterUpperBound(&cA, 0, 2.0); // a <= 2.0
     problem.SetParameterLowerBound(&cMu, 0, 1.0); // mu >= 1.0
     problem.SetParameterUpperBound(&cMu, 0, 1000.0); // mu <= 1000
+
+    // For the improved model
+    problem.SetParameterLowerBound(&cKvb2, 0, 0.0); // Kvb2 >= 0
+    problem.SetParameterUpperBound(&cKvb2, 0, 1000.0); // Kvb2 <= 1000
+    problem.SetParameterLowerBound(&cVct, 0, 0.0); // Vct >= 0.0
+    problem.SetParameterUpperBound(&cVct, 0, 2.0); // Vct <= 2.0
 
     Solver::Options options;
     options.max_num_iterations = 100;
@@ -387,6 +421,10 @@ void ValveAnalyser::plotAnode()
     message = QString {"a: %1"}.arg(cA, 6, 'g', 5, '0');
     qInfo(message.toStdString().c_str());
     message = QString {"mu: %1"}.arg(cMu, 6, 'g', 5, '0');
+    qInfo(message.toStdString().c_str());
+    message = QString {"Kvb2: %1"}.arg(cKvb2, 6, 'g', 5, '0');
+    qInfo(message.toStdString().c_str());
+    message = QString {"Vct: %1"}.arg(cVct, 6, 'g', 5, '0');
     qInfo(message.toStdString().c_str());
 
     if (maxCurrent > 20.0) {
@@ -474,7 +512,8 @@ void ValveAnalyser::plotAnode()
         ia = 0;
         for (int j=0; j < 101; j++) {
             double vaNext = (maxVoltage * j) / 100.0;
-            double iaNext = korenCurrent(va, vg, cKp, cKvb, cA, cMu) / cKg;
+            // double iaNext = korenCurrent(va, vg, cKp, cKvb, cA, cMu) / cKg;
+            double iaNext = improvedKorenCurrent(va, vg, cKp, cKvb, cKvb2, cVct, cA, cMu) / cKg;
 
             if (ia <= iaAxisMax) {
                 scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale, curvePen);
@@ -489,10 +528,24 @@ void ValveAnalyser::plotAnode()
 double ValveAnalyser::korenCurrent(double va, double vg, double kp, double kvb, double a, double mu)
 {
     double x1 = std::sqrt(kvb + va * va);
-    double x2 = 1 / mu + vg / x1;
-    double x3 = std::exp(kp * x2);
-    double x4 = std::log(1.0 + x3);
-    double et = (va / kp) * x4;
+    double x2 = kp * (1 / mu + vg / x1);
+    double x3 = std::log(1.0 + std::exp(x2));
+    double et = (va / kp) * x3;
+    // double et = (va / kp) * log(1 + exp(kp * (1 / mu + vg / sqrt(kvb + va * va))));
+
+    if (et < 0.0) {
+        et = 0.0;
+    }
+
+    return pow(et, a);
+}
+
+double ValveAnalyser::improvedKorenCurrent(double va, double vg, double kp, double kvb, double kvb2, double vct, double a, double mu)
+{
+    double x1 = std::sqrt(kvb + va * va + va * kvb2);
+    double x2 = kp * (1 / mu + (vg + vct) / x1);
+    double x3 = std::log(1.0 + std::exp(x2));
+    double et = (va / kp) * x3;
     // double et = (va / kp) * log(1 + exp(kp * (1 / mu + vg / sqrt(kvb + va * va))));
 
     if (et < 0.0) {

@@ -209,6 +209,7 @@ private:
     void doPlot();
     void plotAnode();
     double korenCurrent(double va, double vg, double kp, double kvb, double a, double mu);
+    double improvedKorenCurrent(double va, double vg, double kp, double kvb, double kvb2, double vct, double a, double mu);
     void updateTest();
     void prepareTest();
     void abortTest();
