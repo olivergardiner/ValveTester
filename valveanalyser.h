@@ -24,8 +24,12 @@
 
 #include "preferencesdialog.h"
 #include "command.h"
+#include "sample.h"
+#include "analyser.h"
 #include "template.h"
 #include "devicemodel.h"
+#include "plot.h"
+
 #include "ledindicator.h"
 #include "ceres/ceres.h"
 #include "glog/logging.h"
@@ -40,9 +44,6 @@
 #define HV2      7   //Anode voltage 2
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
-
-#define PLOT_WIDTH 430
-#define PLOT_HEIGHT 370
 
 enum eDevice {
     PENTODE,
@@ -137,6 +138,9 @@ private:
     LedIndicator *heaterIndicator;
     QGraphicsScene scene;
 
+    Plot plot;
+    Analyser analyser;
+
     QList<QSerialPortInfo> serialPorts;
     QString port = "COM1";
     QSerialPort serialPort;
@@ -175,9 +179,6 @@ private:
 
     bool heaters = false;
 
-    double vRefMaster = 4.096;
-    double vRefSlave = 2.048;
-
     int sweepPoints = 40;
 
     void checkComPorts();
@@ -207,8 +208,8 @@ private:
     QList<QString> setupCommands;
     QList<int> stepParameter;
     QList<QList <int>> sweepParameter;
-    QList<QList <QString>> sweepResult;
-    QList<QString> *currentSweep;
+    QList<QList <Sample *>> sweepResult;
+    QList<Sample *> *currentSweep;
     int setupIndex;
     int stepIndex;
     int sweepIndex;
@@ -221,6 +222,10 @@ private:
     bool isTestRunning = false;
     bool isTestAborted;
     bool endSweep;
+
+    double yScale;
+    double xScale;
+
     QFile *logFile;
 
     void log(QString message);
@@ -230,14 +235,13 @@ private:
     void stopTest();
     void doPlot();
     void plotAnode();
+    void plotModel();
+    QLine createSegment(double x1, double y1, double x2, double y2, QPen pen);
     void updateTest();
     void prepareTest();
     void abortTest();
     void checkTestResponse(QString response);
     void testTimeout();
-    int convertTargetVoltage(int electrode, double voltage);
-    double convertMeasuredVoltage(int electrode, int voltage);
-    double convertMeasuredCurrent(int electrode, int current, int currentLo = 0);
     void steppedSweep(double sweepStart, double sweepStop, double stepStart, double stepStop, double step);
     void singleSweep(double sweepStart, double sweepStop);
     double sampleFunction(double linearValue);

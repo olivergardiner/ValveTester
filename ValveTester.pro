@@ -9,19 +9,25 @@ CONFIG += c++11
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    analyser.cpp \
     command.cpp \
     devicemodel.cpp \
     ledindicator.cpp \
     main.cpp \
+    plot.cpp \
     preferencesdialog.cpp \
+    sample.cpp \
     template.cpp \
     valveanalyser.cpp
 
 HEADERS += \
+    analyser.h \
     command.h \
     devicemodel.h \
     ledindicator.h \
+    plot.h \
     preferencesdialog.h \
+    sample.h \
     template.h \
     valveanalyser.h
 
