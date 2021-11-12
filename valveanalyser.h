@@ -3,11 +3,16 @@
 
 #include <QMainWindow>
 #include <QString>
+#include <QJsonDocument>
+#include <QJsonValue>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QTextStream>
 #include <QTimer>
 #include <QLineEdit>
+#include <QLabel>
 #include <QFile>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
@@ -19,6 +24,8 @@
 
 #include "preferencesdialog.h"
 #include "command.h"
+#include "template.h"
+#include "devicemodel.h"
 #include "ledindicator.h"
 #include "ceres/ceres.h"
 #include "glog/logging.h"
@@ -56,8 +63,6 @@ enum eElectrode {
     GRID,
     SCREEN
 };
-
-extern double (*curveFunction)(double va, double vg, int n, double *p);
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class ValveAnalyser; }
@@ -120,8 +125,14 @@ private slots:
 
     void on_pMax_editingFinished();
 
+    void on_templateSelection_currentIndexChanged(int index);
+
+    void on_modelSelection_currentIndexChanged(int index);
+
 private:
     Ui::ValveAnalyser *ui;
+    QLineEdit *parameterValues[8];
+    QLabel *parameterLabels[8];
 
     LedIndicator *heaterIndicator;
     QGraphicsScene scene;
@@ -134,13 +145,16 @@ private:
     bool awaitingResponse = false;
     QByteArray serialBuffer;
 
+    QJsonObject config;
+    QList<Template> templates;
+    DeviceModel *model = nullptr;
+
     int measuredValues[10];
     double measuredHeaterVoltage = 0.0;
     double measuredHeaterCurrent = 0.0;
 
-    int mode = PENTODE;
-    int device = PENTODE;
-    int test = ANODE_CHARACTERISTICS;
+    int deviceType = TRIODE;
+    int testType = ANODE_CHARACTERISTICS;
 
     double heaterVoltage;
 
@@ -167,6 +181,14 @@ private:
     int sweepPoints = 40;
 
     void checkComPorts();
+
+    void readConfig(QString filename);
+    void buildTemplateSelection();
+    void buildModelSelection();
+    void buildModelParameters();
+    void resetPlot();
+    void setTemplate(int index);
+    void updateParameterDisplay();
 
     void sendCommand(QString command);
 
@@ -208,8 +230,6 @@ private:
     void stopTest();
     void doPlot();
     void plotAnode();
-    double korenCurrent(double va, double vg, double kp, double kvb, double a, double mu);
-    double improvedKorenCurrent(double va, double vg, double kp, double kvb, double kvb2, double vct, double a, double mu);
     void updateTest();
     void prepareTest();
     void abortTest();

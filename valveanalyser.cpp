@@ -17,34 +17,20 @@ ValveAnalyser::ValveAnalyser(QWidget *parent)
         logFile = nullptr;
     }
 
+    readConfig(tr("analyser.json"));
+
     ui->setupUi(this);
+    buildModelParameters();
 
-    ui->deviceType->addItem("Pentode", PENTODE);
     ui->deviceType->addItem("Triode", TRIODE);
-    ui->deviceType->addItem("Double Triode", TRIODE);
-    ui->deviceType->addItem("Diode", DIODE);
+    ui->deviceType->addItem("Pentode", PENTODE);
+    //ui->deviceType->addItem("Double Triode", TRIODE);
+    //ui->deviceType->addItem("Diode", DIODE);
 
-    // Default test parameters
-    ui->deviceType->setCurrentIndex(1); // Default to Triode anode test with ECC83/12AX7
-    ui->heaterVoltage->setText("6.3");
-    ui->anodeStart->setText("0");
-    ui->anodeStop->setText("300");
-    ui->gridStart->setText("0");
-    ui->gridStop->setText("4");
-    ui->gridStep->setText("0.5");
-    ui->pMax->setText("1.125");
-    ui->iaMax->setText("5");
+    buildTemplateSelection();
+    on_templateSelection_currentIndexChanged(0);
 
-    on_deviceType_currentIndexChanged(1);
-    on_testType_currentIndexChanged(0);
-    heaterVoltage = 6.3;
-    anodeStart = 0;
-    anodeStop = 300;
-    gridStart = 0;
-    gridStop = 4;
-    gridStep = 0.5;
-    pMax = 1.125; // Max anode power dissipation (W)
-    iaMax = 5.0; // Max anode current (mA)
+    buildModelSelection();
 
     ui->runButton->setEnabled(false);
 
@@ -100,6 +86,116 @@ void ValveAnalyser::checkComPorts() {
     serialPort.setStopBits(QSerialPort::OneStop);
     serialPort.setBaudRate(QSerialPort::Baud115200);
     serialPort.open(QSerialPort::ReadWrite);
+}
+
+void ValveAnalyser::readConfig(QString filename)
+{
+    QFile configFile(filename);
+
+    if (!configFile.open(QIODevice::ReadOnly)) {
+        qWarning("Couldn't open config file.");
+    } else {
+        QByteArray configData = configFile.readAll();
+
+        QJsonDocument configDoc(QJsonDocument::fromJson(configData));
+        if (configDoc.isObject()) {
+            config = configDoc.object();
+        }
+
+        if (config.contains("templates") && config["templates"].isArray()) {
+            QJsonArray tpls = config["templates"].toArray();
+            for (int i=0; i < tpls.count(); i++) {
+                QJsonValue currentTemplate = tpls.at(i);
+                if (currentTemplate.isObject()) {
+                    Template *tpl = new Template();
+                    tpl->read(currentTemplate.toObject());
+                    templates.append(*tpl);
+                }
+            }
+        }
+    }
+}
+
+void ValveAnalyser::buildTemplateSelection()
+{
+    ui->templateSelection->clear();
+
+    for (int i=0; i < templates.length(); i++) {
+        ui->templateSelection->addItem(templates.at(i).getName());
+    }
+}
+
+void ValveAnalyser::buildModelSelection()
+{
+    ui->modelSelection->clear();
+
+    if (deviceType == TRIODE) {
+        ui->modelSelection->addItem("Simple");
+        ui->modelSelection->addItem("Koren");
+        ui->modelSelection->addItem("Improved Koren");
+    } else if (deviceType == PENTODE) {
+        ui->modelSelection->addItem("Koren");
+        ui->modelSelection->addItem("Derk");
+        ui->modelSelection->addItem("DerkE");
+    }
+}
+
+void ValveAnalyser::buildModelParameters()
+{
+    parameterLabels[0] = ui->par1Label;
+    parameterLabels[1] = ui->par2Label;
+    parameterLabels[2] = ui->par3Label;
+    parameterLabels[3] = ui->par4Label;
+    parameterLabels[4] = ui->par5Label;
+    parameterLabels[5] = ui->par6Label;
+    parameterLabels[6] = ui->par7Label;
+
+    parameterValues[0] = ui->par1Value;
+    parameterValues[1] = ui->par2Value;
+    parameterValues[2] = ui->par3Value;
+    parameterValues[3] = ui->par4Value;
+    parameterValues[4] = ui->par5Value;
+    parameterValues[5] = ui->par6Value;
+    parameterValues[6] = ui->par7Value;
+
+    for (int i=0; i < 7; i++) { // Parameters all initially hidden
+        parameterValues[i]->setVisible(false);
+        parameterLabels[i]->setVisible(false);
+    }
+}
+
+void ValveAnalyser::resetPlot()
+{
+    for (int i=0; i < 7; i++) { // Parameters all initially hidden
+        parameterValues[i]->setVisible(false);
+        parameterLabels[i]->setVisible(false);
+    }
+
+    scene.clear();
+}
+
+void ValveAnalyser::setTemplate(int index)
+{
+    if (index >= 0 && index < templates.count()) {
+    }
+
+    ui->templateSelection->setCurrentIndex(index);
+}
+
+void ValveAnalyser::updateParameterDisplay()
+{
+    updateDoubleValue(ui->heaterVoltage, heaterVoltage);
+    updateDoubleValue(ui->anodeStart, anodeStart);
+    updateDoubleValue(ui->anodeStop, anodeStop);
+    updateDoubleValue(ui->anodeStep, anodeStep);
+    updateDoubleValue(ui->gridStart, gridStart);
+    updateDoubleValue(ui->gridStop, gridStop);
+    updateDoubleValue(ui->gridStep, gridStep);
+    updateDoubleValue(ui->screenStart, screenStart);
+    updateDoubleValue(ui->screenStop, screenStop);
+    updateDoubleValue(ui->screenStep, screenStop);
+    updateDoubleValue(ui->pMax, pMax);
+    updateDoubleValue(ui->iaMax, iaMax);
 }
 
 void ValveAnalyser::sendCommand(QString command)
@@ -179,7 +275,7 @@ void ValveAnalyser::responseTimeout()
 
 void ValveAnalyser::pentodeMode()
 {
-    mode = PENTODE;
+    deviceType = PENTODE;
 
     ui->testType->clear();
     ui->testType->addItem("Anode Characteristics", ANODE_CHARACTERISTICS);
@@ -199,7 +295,7 @@ void ValveAnalyser::pentodeMode()
 
 void ValveAnalyser::triodeMode(bool doubleTriode)
 {
-    mode = TRIODE;
+    deviceType = TRIODE;
 
     ui->testType->clear();
     ui->testType->addItem("Anode Characteristics", ANODE_CHARACTERISTICS);
@@ -218,7 +314,7 @@ void ValveAnalyser::triodeMode(bool doubleTriode)
 
 void ValveAnalyser::diodeMode()
 {
-    mode = DIODE;
+    deviceType = DIODE;
 
     ui->testType->clear();
     ui->testType->addItem("Anode Charcteristics", ANODE_CHARACTERISTICS);
@@ -258,7 +354,7 @@ void ValveAnalyser::stopTest()
 
 void ValveAnalyser::doPlot()
 {
-    switch (test) {
+    switch (testType) {
     case ANODE_CHARACTERISTICS:
         plotAnode();
         break;
@@ -266,39 +362,6 @@ void ValveAnalyser::doPlot()
         break;
     }
 }
-
-struct KorenTriodeResidual {
-    KorenTriodeResidual(double va, double vg, double ia) : va_(va), vg_(vg), ia_(ia) {}
-
-    template <typename T>
-    bool operator()(const T* const kg, const T* const kp, const T* const kvb, const T* const a, const T* const mu, T* residual) const {
-        // residual[0] = ia_ - pow((va_ / kp[0]) * log(1.0 + exp(kp[0] * (1.0 / mu[0] + vg_ / sqrt(kvb[0] + va_ * va_)))), a[0]) / kg[0];
-        T e1t = log(1.0 + exp(kp[0] * (1.0 / mu[0] + vg_ / sqrt(kvb[0] + va_ * va_))));
-        residual[0] = ia_ - pow((va_ / kp[0]) * e1t, a[0]) / kg[0];
-        return true;
-    }
-
-private:
-    const double va_;
-    const double vg_;
-    const double ia_;
-};
-
-struct ImprovedKorenTriodeResidual {
-    ImprovedKorenTriodeResidual(double va, double vg, double ia) : va_(va), vg_(vg), ia_(ia) {}
-
-    template <typename T>
-    bool operator()(const T* const kg, const T* const kp, const T* const kvb, const T* const kvb2, const T* const vct, const T* const a, const T* const mu, T* residual) const {
-        T e2t = log(1.0 + exp(kp[0] * (1.0 / mu[0] + (vg_ + vct[0])/ sqrt(kvb[0] + va_ * va_ + kvb2[0] * va_))));
-        residual[0] = ia_ - pow((va_ / kp[0]) * e2t, a[0]) / kg[0];
-        return true;
-    }
-
-private:
-    const double va_;
-    const double vg_;
-    const double ia_;
-};
 
 void ValveAnalyser::plotAnode()
 {
@@ -359,73 +422,22 @@ void ValveAnalyser::plotAnode()
             anodeVoltageValues.append(anodeVoltageSweep);
             anodeCurrentValues.append(anodeCurrentSweep);
         }
+    }    
+
+    int modelType = MODEL_TRIODE;
+    if (deviceType == PENTODE) {
+        modelType = MODEL_PENTODE;
     }
 
-    // Fit Koren Triode model using Ceres
-    double cKg = 1.0;
-    double cKp = 500.0;
-    double cKvb = 100.0;
-    double cA = 1.5;
-    double cMu = 70.0;
+    model = new DeviceModel(modelType, ui->modelSelection->currentIndex(), templates.at(ui->templateSelection->currentIndex()));
 
-    // For the improved model
-    double cVct = 0.5;
-    double cKvb2 = 10.0;
-
-    Problem problem;
     for (int i = 0; i < vaSample.length(); ++i) {
-        /* problem.AddResidualBlock(
-            new AutoDiffCostFunction<KorenTriodeResidual, 1, 1, 1, 1, 1, 1>(
-                new KorenTriodeResidual(vaSample.at(i), vgSample.at(i), iaSample.at(i))),
-            NULL,
-            &cKg, &cKp, &cKvb, &cA, &cMu); */
-
-        problem.AddResidualBlock(
-            new AutoDiffCostFunction<ImprovedKorenTriodeResidual, 1, 1, 1, 1, 1, 1, 1, 1>(
-                new ImprovedKorenTriodeResidual(vaSample.at(i), vgSample.at(i), iaSample.at(i))),
-            NULL,
-            &cKg, &cKp, &cKvb, &cKvb2, &cVct, &cA, &cMu);
+        model->addTriodeSample(vaSample.at(i), vgSample.at(i), iaSample.at(i));
     }
 
-    problem.SetParameterLowerBound(&cKg, 0, 0.0000001); // Kg > 0
-    problem.SetParameterLowerBound(&cKp, 0, 0.0000001); // Kp > 0
-    problem.SetParameterLowerBound(&cKvb, 0, 0.0); // Kvb >= 0
-    problem.SetParameterUpperBound(&cKvb, 0, 10000.0); // Kvb <= 10000
-    problem.SetParameterLowerBound(&cA, 0, 1.0); // a >= 1.0
-    problem.SetParameterUpperBound(&cA, 0, 2.0); // a <= 2.0
-    problem.SetParameterLowerBound(&cMu, 0, 1.0); // mu >= 1.0
-    problem.SetParameterUpperBound(&cMu, 0, 1000.0); // mu <= 1000
+    model->solve();
 
-    // For the improved model
-    problem.SetParameterLowerBound(&cKvb2, 0, 0.0); // Kvb2 >= 0
-    problem.SetParameterUpperBound(&cKvb2, 0, 1000.0); // Kvb2 <= 1000
-    problem.SetParameterLowerBound(&cVct, 0, 0.0); // Vct >= 0.0
-    problem.SetParameterUpperBound(&cVct, 0, 2.0); // Vct <= 2.0
-
-    Solver::Options options;
-    options.max_num_iterations = 100;
-    options.linear_solver_type = ceres::CGNR;
-    options.preconditioner_type = ceres::JACOBI;
-    options.minimizer_progress_to_stdout = true;
-    Solver::Summary summary;
-    Solve(options, &problem, &summary);
-
-    qInfo(summary.BriefReport().c_str());
-
-    QString message = QString {"Kg: %1"}.arg(cKg, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"Kp: %1"}.arg(cKp, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"Kvb: %1"}.arg(cKvb, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"a: %1"}.arg(cA, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"mu: %1"}.arg(cMu, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"Kvb2: %1"}.arg(cKvb2, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
-    message = QString {"Vct: %1"}.arg(cVct, 6, 'g', 5, '0');
-    qInfo(message.toStdString().c_str());
+    model->updateUI(parameterLabels, parameterValues);
 
     if (maxCurrent > 20.0) {
         majorIDivision = 10.0;
@@ -512,8 +524,7 @@ void ValveAnalyser::plotAnode()
         ia = 0;
         for (int j=0; j < 101; j++) {
             double vaNext = (maxVoltage * j) / 100.0;
-            // double iaNext = korenCurrent(va, vg, cKp, cKvb, cA, cMu) / cKg;
-            double iaNext = improvedKorenCurrent(va, vg, cKp, cKvb, cKvb2, cVct, cA, cMu) / cKg;
+            double iaNext = model->anodeCurrent(va, vg);
 
             if (ia <= iaAxisMax) {
                 scene.addLine(va *vaScale, (iaAxisMax - ia) * iaScale, vaNext * vaScale, (iaAxisMax - iaNext) * iaScale, curvePen);
@@ -523,36 +534,6 @@ void ValveAnalyser::plotAnode()
             ia = iaNext;
         }
     }
-}
-
-double ValveAnalyser::korenCurrent(double va, double vg, double kp, double kvb, double a, double mu)
-{
-    double x1 = std::sqrt(kvb + va * va);
-    double x2 = kp * (1 / mu + vg / x1);
-    double x3 = std::log(1.0 + std::exp(x2));
-    double et = (va / kp) * x3;
-    // double et = (va / kp) * log(1 + exp(kp * (1 / mu + vg / sqrt(kvb + va * va))));
-
-    if (et < 0.0) {
-        et = 0.0;
-    }
-
-    return pow(et, a);
-}
-
-double ValveAnalyser::improvedKorenCurrent(double va, double vg, double kp, double kvb, double kvb2, double vct, double a, double mu)
-{
-    double x1 = std::sqrt(kvb + va * va + va * kvb2);
-    double x2 = kp * (1 / mu + (vg + vct) / x1);
-    double x3 = std::log(1.0 + std::exp(x2));
-    double et = (va / kp) * x3;
-    // double et = (va / kp) * log(1 + exp(kp * (1 / mu + vg / sqrt(kvb + va * va))));
-
-    if (et < 0.0) {
-        et = 0.0;
-    }
-
-    return pow(et, a);
 }
 
 void ValveAnalyser::startTest()
@@ -566,7 +547,7 @@ void ValveAnalyser::startTest()
     isTestRunning = true;
     endSweep = false;
 
-    switch (test) {
+    switch (testType) {
     case ANODE_CHARACTERISTICS:
         stepType = GRID;
         stepCommandPrefix = "S2 ";
@@ -575,7 +556,7 @@ void ValveAnalyser::startTest()
 
         steppedSweep(anodeStart, anodeStop, gridStart, gridStop, gridStep);
 
-        if (mode == PENTODE) {
+        if (deviceType == PENTODE) {
             setupCommands.append(buildSetCommand("S7 ", convertTargetVoltage(SCREEN, screenStart)));
         } else {
             setupCommands.append("S7 0");
@@ -585,7 +566,7 @@ void ValveAnalyser::startTest()
         prepareTest();
         break;
     case TRANSFER_CHARACTERISTICS:
-        if (mode == PENTODE) {
+        if (deviceType == PENTODE) {
 
         } else {
 
@@ -826,9 +807,9 @@ void ValveAnalyser::steppedSweep(double sweepStart, double sweepStop, double ste
 double ValveAnalyser::sampleFunction(double linearValue)
 {
     // Converts a linear % value to a transformed % value to concentrate sweep sample points where there is most change
-    if (mode == TRIODE && test == ANODE_CHARACTERISTICS) { // A triode may start to conduct at any anode voltage so we can't predict where the "bend" will be...
+    if (deviceType == TRIODE && testType == ANODE_CHARACTERISTICS) { // A triode may start to conduct at any anode voltage so we can't predict where the "bend" will be...
         return linearValue; // ...so a linear sampling is best
-    } else if (mode == PENTODE && test == ANODE_CHARACTERISTICS) { // A Pentode has a knee as the anode voltage rises from 0v...
+    } else if (deviceType == PENTODE && testType == ANODE_CHARACTERISTICS) { // A Pentode has a knee as the anode voltage rises from 0v...
         // ...so we want more smaples early on - the code below uses the profile of a log pot to do the necessary bending
 
         // From: https://electronics.stackexchange.com/questions/304692/formula-for-logarithmic-audio-taper-pot
@@ -1057,8 +1038,8 @@ void ValveAnalyser::on_deviceType_currentIndexChanged(int index)
         break;
     }
 
+    ui->testType->setCurrentIndex(0);
     on_testType_currentIndexChanged(0);
-    device = index;
 }
 
 void ValveAnalyser::on_testType_currentIndexChanged(int index)
@@ -1067,11 +1048,11 @@ void ValveAnalyser::on_testType_currentIndexChanged(int index)
     case ANODE_CHARACTERISTICS: // Anode swept and Grid stepped
         ui->anodeStop->setEnabled(true);
         ui->anodeStep->setEnabled(false);
-        if (mode != DIODE) {
+        if (deviceType != DIODE) {
             ui->gridStop->setEnabled(true);
             ui->gridStep->setEnabled(true);
         }
-        if (mode == PENTODE) { // Screen fixed (if Pentode)
+        if (deviceType == PENTODE) { // Screen fixed (if Pentode)
             ui->screenStop->setEnabled(false);
             ui->screenStep->setEnabled(false);
         }
@@ -1079,7 +1060,7 @@ void ValveAnalyser::on_testType_currentIndexChanged(int index)
     case TRANSFER_CHARACTERISTICS: // Grid swept
         ui->gridStop->setEnabled(true);
         ui->gridStep->setEnabled(false);
-        if (mode == PENTODE) { // Anode fixed and Screen stepped
+        if (deviceType == PENTODE) { // Anode fixed and Screen stepped
             ui->anodeStop->setEnabled(false);
             ui->anodeStep->setEnabled(false);
             ui->screenStop->setEnabled(true);
@@ -1101,7 +1082,9 @@ void ValveAnalyser::on_testType_currentIndexChanged(int index)
         break;
     }
 
-    test = index;
+    testType = index;
+
+    buildModelSelection();
 }
 
 void ValveAnalyser::on_anodeStart_editingFinished()
@@ -1164,3 +1147,39 @@ void ValveAnalyser::on_pMax_editingFinished()
 {
     updatePMax();
 }
+
+void ValveAnalyser::on_templateSelection_currentIndexChanged(int index)
+{
+    Template tpl = templates.at(index);
+
+    heaterVoltage = tpl.getVHeater();
+    anodeStart = tpl.getVaStart();
+    anodeStop = tpl.getVaStop();
+    anodeStep = tpl.getVaStep();
+    gridStart = tpl.getVgStart();
+    gridStop = tpl.getVgStop();
+    gridStep = tpl.getVgStep();
+    screenStart = tpl.getVsStart();
+    screenStop = tpl.getVsStop();
+    screenStep = tpl.getVsStep();
+    pMax = tpl.getPaMax();
+    iaMax = tpl.getIaMax();
+
+    updateParameterDisplay();
+
+    ui->deviceType->setCurrentIndex(tpl.getDeviceType());
+    on_deviceType_currentIndexChanged(tpl.getDeviceType());
+
+    ui->testType->setCurrentIndex(tpl.getTestType());
+    on_testType_currentIndexChanged(tpl.getTestType());
+}
+
+
+void ValveAnalyser::on_modelSelection_currentIndexChanged(int index)
+{
+    for (int i=0; i < 7; i++) { // Parameters all initially hidden
+        parameterValues[i]->setVisible(false);
+        parameterLabels[i]->setVisible(false);
+    }
+}
+

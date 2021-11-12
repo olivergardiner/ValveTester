@@ -2,7 +2,7 @@ QT       += core gui printsupport serialport
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-CONFIG += c++14
+CONFIG += c++11
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
@@ -10,15 +10,19 @@ CONFIG += c++14
 
 SOURCES += \
     command.cpp \
+    devicemodel.cpp \
     ledindicator.cpp \
     main.cpp \
     preferencesdialog.cpp \
+    template.cpp \
     valveanalyser.cpp
 
 HEADERS += \
     command.h \
+    devicemodel.h \
     ledindicator.h \
     preferencesdialog.h \
+    template.h \
     valveanalyser.h
 
 FORMS += \
