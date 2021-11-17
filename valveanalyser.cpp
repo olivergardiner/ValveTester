@@ -1,12 +1,6 @@
 #include "valveanalyser.h"
 #include "ui_valveanalyser.h"
 
-using ceres::AutoDiffCostFunction;
-using ceres::CostFunction;
-using ceres::Problem;
-using ceres::Solve;
-using ceres::Solver;
-
 ValveAnalyser::ValveAnalyser(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::ValveAnalyser)
@@ -27,8 +21,7 @@ ValveAnalyser::ValveAnalyser(QWidget *parent)
     //ui->deviceType->addItem("Double Triode", TRIODE);
     //ui->deviceType->addItem("Diode", DIODE);
 
-    buildTemplateSelection();
-    on_templateSelection_currentIndexChanged(0);
+    loadTemplate(0);
 
     buildModelSelection();
 
@@ -116,27 +109,45 @@ void ValveAnalyser::readConfig(QString filename)
     }
 }
 
-void ValveAnalyser::buildTemplateSelection()
+void ValveAnalyser::loadTemplate(int index)
 {
-    ui->templateSelection->clear();
+    Template tpl = templates.at(index);
 
-    for (int i=0; i < templates.length(); i++) {
-        ui->templateSelection->addItem(templates.at(i).getName());
-    }
+    ui->deviceName->setText(tpl.getName());
+    heaterVoltage = tpl.getVHeater();
+    anodeStart = tpl.getVaStart();
+    anodeStop = tpl.getVaStop();
+    anodeStep = tpl.getVaStep();
+    gridStart = tpl.getVgStart();
+    gridStop = tpl.getVgStop();
+    gridStep = tpl.getVgStep();
+    screenStart = tpl.getVsStart();
+    screenStop = tpl.getVsStop();
+    screenStep = tpl.getVsStep();
+    pMax = tpl.getPaMax();
+    iaMax = tpl.getIaMax();
+
+    updateParameterDisplay();
+
+    ui->deviceType->setCurrentIndex(tpl.getDeviceType());
+    on_deviceType_currentIndexChanged(tpl.getDeviceType());
+
+    ui->testType->setCurrentIndex(tpl.getTestType());
+    on_testType_currentIndexChanged(tpl.getTestType());
 }
 
 void ValveAnalyser::buildModelSelection()
 {
     ui->modelSelection->clear();
 
-    if (deviceType == TRIODE) {
-        ui->modelSelection->addItem("Simple");
-        ui->modelSelection->addItem("Koren");
-        ui->modelSelection->addItem("Improved Koren");
-    } else if (deviceType == PENTODE) {
-        ui->modelSelection->addItem("Koren");
-        ui->modelSelection->addItem("Derk");
-        ui->modelSelection->addItem("DerkE");
+    if (dataSetDeviceType == TRIODE) {
+        ui->modelSelection->addItem("Simple", SIMPLE_TRIODE);
+        ui->modelSelection->addItem("Koren", KOREN_TRIODE);
+        ui->modelSelection->addItem("Improved Koren", IMPROVED_KOREN_TRIODE);
+    } else if (dataSetDeviceType == PENTODE) {
+        ui->modelSelection->addItem("Koren", KOREN_PENTODE);
+        ui->modelSelection->addItem("Derk", DERK_PENTODE);
+        ui->modelSelection->addItem("DerkE", DERKE_PENTODE);
     }
 }
 
@@ -171,15 +182,7 @@ void ValveAnalyser::resetPlot()
         parameterLabels[i]->setVisible(false);
     }
 
-    scene.clear();
-}
-
-void ValveAnalyser::setTemplate(int index)
-{
-    if (index >= 0 && index < templates.count()) {
-    }
-
-    ui->templateSelection->setCurrentIndex(index);
+    plot.clear();
 }
 
 void ValveAnalyser::updateParameterDisplay()
@@ -352,11 +355,38 @@ void ValveAnalyser::stopTest()
 
 }
 
+void ValveAnalyser::testFinished()
+{
+    ui->runButton->setChecked(false);
+    ui->progressBar->setVisible(false);
+    isTestRunning = false;
+    dataSetValid = true;
+    dataSetDeviceType = deviceType;
+    dataSetTestType = testType;
+
+    plotTitle = ui->deviceName->text();
+    if (testType == ANODE_CHARACTERISTICS) {
+        plotTitle.append(" Anode Characterisitcs");
+        if (deviceType == PENTODE) {
+            plotTitle.append(QString {" with Vg2 = %1V"}.arg(screenStart, -6, 'f', 3, '0'));
+        }
+    }
+
+    ui->plotTitle->setText(plotTitle);
+
+    buildModelSelection();
+
+    doPlot();
+}
+
 void ValveAnalyser::doPlot()
 {
     switch (testType) {
     case ANODE_CHARACTERISTICS:
         plotAnode();
+        break;
+    case TRANSFER_CHARACTERISTICS:
+        plotTransfer();
         break;
     default:
         break;
@@ -366,24 +396,25 @@ void ValveAnalyser::doPlot()
 void ValveAnalyser::plotAnode()
 {
     double majorVDivision = 25.0;
-    double minorVDivision = 5.0;
     double majorIDivision = 1.0;
-    double minorIDivision = 0.1;
 
     double maxVoltage = anodeStop;
     double maxCurrent = analyser.getIaMax();
 
-    if (maxCurrent > 20.0) { // Over 20mA we plot the Ia axis in steps of 10mA
+    if (maxCurrent > 50.0) { // Over 20mA we plot the Ia axis in steps of 10mA
         majorIDivision = 10.0;
-        minorIDivision = 1.0;
+    } else if (maxCurrent > 20.0) {
+        majorIDivision = 5.0;
     }
 
     double iaAxisMax = (((int) (maxCurrent / majorIDivision)) + 1) * majorIDivision;
     double vaAxisMax = (((int) (maxVoltage / majorVDivision)) + 2) * majorVDivision;
-    plot.setAxes(vaAxisMax, majorVDivision, iaAxisMax, majorIDivision);
+    plot.setAxes(0.0, vaAxisMax, majorVDivision, 0.0, iaAxisMax, majorIDivision, 2, 1);
 
     QPen samplePen;
     samplePen.setColor(QColor::fromRgb(0, 0, 0));
+
+    QList<QGraphicsItem *> segments;
 
     int sweeps = sweepResult.length();
     for (int i = 0; i < sweeps; i++) {
@@ -402,7 +433,7 @@ void ValveAnalyser::plotAnode()
              double vaNext = sample->getVa();
              double iaNext = sample->getIa();
 
-             plot.createSegment(va, ia, vaNext, iaNext, samplePen);
+             segments.append(plot.createSegment(va, ia, vaNext, iaNext, samplePen));
 
              va = vaNext;
              ia = iaNext;
@@ -410,16 +441,77 @@ void ValveAnalyser::plotAnode()
 
         plot.createLabel(va, ia, vg);
     }
+
+    ui->showMeasuredValues->setChecked(true);
+
+    measuredCurves = plot.getScene()->createItemGroup(segments);
 }
 
-void ValveAnalyser::plotModel()
+void ValveAnalyser::plotTransfer()
+{
+    double majorVDivision = 1.0;
+    double majorIDivision = 1.0;
+
+    double maxVoltage = -gridStop;
+    double maxCurrent = analyser.getIaMax();
+
+    if (maxCurrent > 50.0) { // Over 20mA we plot the Ia axis in steps of 10mA
+        majorIDivision = 10.0;
+    } else if (maxCurrent > 20.0) {
+        majorIDivision = 5.0;
+    }
+
+    double iaAxisMax = (((int) (maxCurrent / majorIDivision)) + 1) * majorIDivision;
+    //double vgAxisMax = (((int) (maxVoltage / majorVDivision)) - 1) * majorVDivision;
+    double vgAxisMax = maxVoltage;
+    plot.setAxes(vgAxisMax, 0.0, majorVDivision, 0.0, iaAxisMax, majorIDivision);
+
+    QPen samplePen;
+    samplePen.setColor(QColor::fromRgb(0, 0, 0));
+
+    QList<QGraphicsItem *> segments;
+
+    int sweeps = sweepResult.length();
+    for (int i = 0; i < sweeps; i++) {
+        QList<Sample *> thisSweep = sweepResult.at(i);
+
+        Sample *firstSample = thisSweep.at(0);
+
+        double vg = firstSample->getVg1();
+        double va = firstSample->getVa();
+        double ia = firstSample->getIa();
+
+        int samples = thisSweep.length();
+        for (int j = 1; j < samples; j++) {
+             Sample *sample = thisSweep.at(j);
+
+             double vgNext = sample->getVg1();
+             double iaNext = sample->getIa();
+
+             segments.append(plot.createSegment(vg, ia, vgNext, iaNext, samplePen));
+
+             vg = vgNext;
+             ia = iaNext;
+         }
+
+        plot.createLabel(vg, ia, va);
+    }
+
+    ui->showMeasuredValues->setChecked(true);
+
+    measuredCurves = plot.getScene()->createItemGroup(segments);
+}
+
+void ValveAnalyser::runModel()
 {
     int modelType = MODEL_TRIODE;
-    if (deviceType == PENTODE) {
+    if (dataSetDeviceType == PENTODE) {
         modelType = MODEL_PENTODE;
     }
 
-    model = new DeviceModel(modelType, ui->modelSelection->currentIndex(), templates.at(ui->templateSelection->currentIndex()));
+    if (model == nullptr) {
+        model = new DeviceModel(modelType, ui->modelSelection->currentData().toInt());
+    }
 
     int sweeps = sweepResult.length();
 
@@ -429,7 +521,11 @@ void ValveAnalyser::plotModel()
         int samples = thisSweep.length();
         for (int j = 0; j < samples; j++) {
              Sample *sample = thisSweep.at(j);
-             model->addTriodeSample(sample->getVa(), sample->getVg1(), sample->getIa());
+             if (dataSetDeviceType == TRIODE) {
+                 model->addTriodeSample(sample->getVa(), sample->getVg1(), sample->getIa());
+             } else if (dataSetDeviceType == PENTODE) {
+                 model->addPentodeSample(sample->getVa(), sample->getVg1(), sample->getVg2(), sample->getIa());
+             }
         }
     }
 
@@ -437,24 +533,86 @@ void ValveAnalyser::plotModel()
 
     model->updateUI(parameterLabels, parameterValues);
 
+    ui->showModelledValues->setChecked(true);
+
+    plotModel();
+}
+
+void ValveAnalyser::plotModel() {
+    switch (dataSetTestType) {
+    case ANODE_CHARACTERISTICS:
+        plotAnodeModel();
+        break;
+    case TRANSFER_CHARACTERISTICS:
+        plotTransferModel();
+        break;
+    default:
+        break;
+    }
+}
+
+void ValveAnalyser::plotAnodeModel()
+{
+    QList<QGraphicsItem *> segments;
+
     QPen modelPen;
     modelPen.setColor(QColor::fromRgb(255, 0, 0));
 
+    if (modelledCurves) {
+       plot.getScene()->removeItem(modelledCurves);
+    }
+
+    int sweeps = sweepResult.length();
+
     for (int i=0; i < sweeps; i++) {
         QList<Sample *> thisSweep = sweepResult.at(i);
-        double vg = -thisSweep.at(i)->getVg1();
-        double va = 0;
-        double ia = 0;
+        double vg = thisSweep.at(0)->getVg1();
+        double va = thisSweep.at(0)->getVa();
+        double ia = model->anodeCurrent(va, vg);
 
-        for (int j=0; j < 101; j++) {
+        for (int j=1; j < 101; j++) {
             double vaNext = (anodeStop * j) / 100.0;
             double iaNext = model->anodeCurrent(va, vg);
-            plot.createSegment(va, ia, vaNext, iaNext, modelPen);
+            segments.append(plot.createSegment(va, ia, vaNext, iaNext, modelPen));
 
             va = vaNext;
             ia = iaNext;
         }
     }
+
+    modelledCurves = plot.getScene()->createItemGroup(segments);
+}
+
+void ValveAnalyser::plotTransferModel()
+{
+    QList<QGraphicsItem *> segments;
+
+    QPen modelPen;
+    modelPen.setColor(QColor::fromRgb(255, 0, 0));
+
+    if (modelledCurves) {
+       plot.getScene()->removeItem(modelledCurves);
+    }
+
+    int sweeps = sweepResult.length();
+
+    for (int i=0; i < sweeps; i++) {
+        QList<Sample *> thisSweep = sweepResult.at(i);
+        double vg = thisSweep.at(0)->getVg1();
+        double va = thisSweep.at(0)->getVa();
+        double ia = model->anodeCurrent(va, vg);
+
+        for (int j=1; j < 101; j++) {
+            double vgNext = (-gridStop * (100 - j)) / 100.0;
+            double iaNext = model->anodeCurrent(va, vg);
+            segments.append(plot.createSegment(vg, ia, vgNext, iaNext, modelPen));
+
+            vg = vgNext;
+            ia = iaNext;
+        }
+    }
+
+    modelledCurves = plot.getScene()->createItemGroup(segments);
 }
 
 void ValveAnalyser::startTest()
@@ -462,12 +620,14 @@ void ValveAnalyser::startTest()
     // Clear down the previous result set
     sweepResult.clear();
     analyser.reset();
+    model = nullptr;
     currentSweep = new QList<Sample *>;
 
     isStopRequested = false;
     isTestAborted = false;
     isTestRunning = true;
     endSweep = false;
+    dataSetValid = false;
 
     switch (testType) {
     case ANODE_CHARACTERISTICS:
@@ -485,14 +645,24 @@ void ValveAnalyser::startTest()
         }
         setupCommands.append(buildSetCommand(stepCommandPrefix, stepParameter.at(0)));
 
-        prepareTest();
+        prepareTest(0.0, 0.0); // Dummy heater values won't get displayed
         break;
     case TRANSFER_CHARACTERISTICS:
+        stepType = ANODE;
+        stepCommandPrefix = "S3 ";
+        sweepType = GRID;
+        sweepCommandPrefix = "S2 ";
+
+        steppedSweep(gridStop, gridStart, anodeStart, anodeStop, anodeStep); // Sweep is reversed to finish on low (absolute) value
+
         if (deviceType == PENTODE) {
-
+            setupCommands.append(buildSetCommand("S7 ", analyser.convertTargetVoltage(SCREEN, screenStart)));
         } else {
-
+            setupCommands.append("S7 0");
         }
+        setupCommands.append(buildSetCommand(stepCommandPrefix, stepParameter.at(0)));
+
+        prepareTest(0.0, 0.0); // Dummy heater values won't get displayed
         break;
     case SCREEN_CHARACTERISTICS:
         break;
@@ -513,7 +683,7 @@ void ValveAnalyser::updateTest()
     }
 }
 
-void ValveAnalyser::prepareTest() {
+void ValveAnalyser::prepareTest(double vh, double ih) {
     if (!endSweep && sweepIndex < sweepParameter.at(stepIndex).length()) {
         // Run the next value in the sweep
         setupCommands.append(buildSetCommand(sweepCommandPrefix, sweepParameter.at(stepIndex).at(sweepIndex)));
@@ -528,6 +698,12 @@ void ValveAnalyser::prepareTest() {
             currentSweep = new QList<Sample *>;
         }
 
+        // Update the heater display at the end of a sweep
+        QString vhValue = QString {"%1"}.arg(vh, -6, 'f', 3, '0');
+        ui->heaterVlcd->display(vhValue);
+        QString ihValue = QString {"%1"}.arg(ih, -6, 'f', 3, '0');
+        ui->heaterIlcd->display(ihValue);
+
         if (stepIndex < stepParameter.length()) {
             //setupCommands.append("M1"); // Discharge the capacitor banks at the end of a sweep (or it may take a while)
             setupCommands.append(buildSetCommand(stepCommandPrefix, stepParameter.at(stepIndex)));
@@ -535,17 +711,9 @@ void ValveAnalyser::prepareTest() {
             updateTest();
         } else {
             // We've reached the end of the test!
-            ui->runButton->setChecked(false);
-            ui->progressBar->setVisible(false);
             sendCommand("M1");
-            isTestRunning = false;
 
-            if (!commandBuffer.isEmpty()) { // There is a command to send
-                commandBuffer.first().send(this);
-                commandBuffer.removeFirst();
-            }
-
-            doPlot();
+            testFinished();
         }
     }
 
@@ -583,11 +751,6 @@ void ValveAnalyser::checkTestResponse(QString response)
             double va = sample->getVa();
             double ia = sample->getIa();
 
-            QString vh = QString {"%1"}.arg(sample->getVh(), -6, 'f', 3, '0');
-            ui->heaterVlcd->display(vh);
-            QString ih = QString {"%1"}.arg(sample->getIh(), -6, 'f', 3, '0');
-            ui->heaterIlcd->display(ih);
-
             // Prepare the next test
             isMeasurement = false;
             setupCommands.clear(); // Just in case;
@@ -602,7 +765,7 @@ void ValveAnalyser::checkTestResponse(QString response)
                 qInfo("Ending sweep due to exceeding power threshold");
             }
 
-            prepareTest();
+            prepareTest(sample->getVh(), sample->getIh());
         } else {
             updateTest();
         }
@@ -938,9 +1101,7 @@ void ValveAnalyser::on_testType_currentIndexChanged(int index)
         break;
     }
 
-    testType = index;
-
-    buildModelSelection();
+    testType = ui->testType->itemData(index).toInt();
 }
 
 void ValveAnalyser::on_anodeStart_editingFinished()
@@ -1004,38 +1165,34 @@ void ValveAnalyser::on_pMax_editingFinished()
     updatePMax();
 }
 
-void ValveAnalyser::on_templateSelection_currentIndexChanged(int index)
-{
-    Template tpl = templates.at(index);
-
-    heaterVoltage = tpl.getVHeater();
-    anodeStart = tpl.getVaStart();
-    anodeStop = tpl.getVaStop();
-    anodeStep = tpl.getVaStep();
-    gridStart = tpl.getVgStart();
-    gridStop = tpl.getVgStop();
-    gridStep = tpl.getVgStep();
-    screenStart = tpl.getVsStart();
-    screenStop = tpl.getVsStop();
-    screenStep = tpl.getVsStep();
-    pMax = tpl.getPaMax();
-    iaMax = tpl.getIaMax();
-
-    updateParameterDisplay();
-
-    ui->deviceType->setCurrentIndex(tpl.getDeviceType());
-    on_deviceType_currentIndexChanged(tpl.getDeviceType());
-
-    ui->testType->setCurrentIndex(tpl.getTestType());
-    on_testType_currentIndexChanged(tpl.getTestType());
-}
-
-
 void ValveAnalyser::on_modelSelection_currentIndexChanged(int index)
 {
     for (int i=0; i < 7; i++) { // Parameters all initially hidden
         parameterValues[i]->setVisible(false);
         parameterLabels[i]->setVisible(false);
+    }
+
+    model = nullptr;
+}
+
+void ValveAnalyser::on_fitModelButton_clicked()
+{
+    if (dataSetValid) {
+        runModel();
+    }
+}
+
+void ValveAnalyser::on_showMeasuredValues_clicked(bool checked)
+{
+    if (measuredCurves) {
+        measuredCurves->setVisible(checked);
+    }
+}
+
+void ValveAnalyser::on_showModelledValues_clicked(bool checked)
+{
+    if (modelledCurves) {
+        modelledCurves->setVisible(checked);
     }
 }
 

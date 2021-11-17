@@ -31,8 +31,6 @@
 #include "plot.h"
 
 #include "ledindicator.h"
-#include "ceres/ceres.h"
-#include "glog/logging.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
 #define IH       1   //Heater current
@@ -126,9 +124,13 @@ private slots:
 
     void on_pMax_editingFinished();
 
-    void on_templateSelection_currentIndexChanged(int index);
-
     void on_modelSelection_currentIndexChanged(int index);
+
+    void on_fitModelButton_clicked();
+
+    void on_showMeasuredValues_clicked(bool checked);
+
+    void on_showModelledValues_clicked(bool checked);
 
 private:
     Ui::ValveAnalyser *ui;
@@ -136,7 +138,8 @@ private:
     QLabel *parameterLabels[8];
 
     LedIndicator *heaterIndicator;
-    QGraphicsScene scene;
+    QGraphicsItemGroup *measuredCurves = nullptr;
+    QGraphicsItemGroup *modelledCurves = nullptr;
 
     Plot plot;
     Analyser analyser;
@@ -184,11 +187,10 @@ private:
     void checkComPorts();
 
     void readConfig(QString filename);
-    void buildTemplateSelection();
+    void loadTemplate(int index);
     void buildModelSelection();
     void buildModelParameters();
     void resetPlot();
-    void setTemplate(int index);
     void updateParameterDisplay();
 
     void sendCommand(QString command);
@@ -222,9 +224,10 @@ private:
     bool isTestRunning = false;
     bool isTestAborted;
     bool endSweep;
-
-    double yScale;
-    double xScale;
+    bool dataSetValid = false;
+    int dataSetDeviceType = 0;
+    int dataSetTestType = 0;
+    QString plotTitle = "";
 
     QFile *logFile;
 
@@ -233,12 +236,17 @@ private:
     QString buildSetCommand(QString command, int value);
     void startTest();
     void stopTest();
+    void testFinished();
     void doPlot();
     void plotAnode();
+    void plotTransfer();
+    void plotTransferModel();
+    void runModel();
     void plotModel();
+    void plotAnodeModel();
     QLine createSegment(double x1, double y1, double x2, double y2, QPen pen);
     void updateTest();
-    void prepareTest();
+    void prepareTest(double vh, double ih);
     void abortTest();
     void checkTestResponse(QString response);
     void testTimeout();

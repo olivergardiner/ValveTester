@@ -15,27 +15,36 @@ using ceres::Problem;
 using ceres::Solve;
 using ceres::Solver;
 
-enum eTriodeModel{
+enum eModelType {
     SIMPLE_TRIODE,
     KOREN_TRIODE,
-    IMPROVED_KOREN_TRIODE
-};
-
-enum ePentodeModel{
+    IMPROVED_KOREN_TRIODE,
     KOREN_PENTODE,
     DERK_PENTODE,
     DERKE_PENTODE
 };
 
-enum eModelType{
+enum eModelDeviceType {
     MODEL_TRIODE,
     MODEL_PENTODE
+};
+
+enum eTriodeParameter {
+    TRI_KG,
+    TRI_KP,
+    TRI_KVB,
+    TRI_KVB2,
+    TRI_VCT,
+    TRI_ALPHA,
+    TRI_MU
 };
 
 class DeviceModel
 {
 public:
-    DeviceModel(int _modelType, int _model, Template tpl);
+    DeviceModel(int _modelType, int _model);
+
+    double getParameter(int index) const;
 
     void addTriodeSample(double va, double vg1, double ia);
     void addPentodeSample(double va, double vg1, double vg2, double ia);
@@ -43,14 +52,6 @@ public:
 
     double anodeCurrent(double va, double vg1);
     double anodeCurrent(double va, double vg1, double vg2);
-
-    double getCKg() const;
-    double getCKp() const;
-    double getCAlpha() const;
-    double getCVct() const;
-    double getCKvb() const;
-    double getCKvb2() const;
-    double getCMu() const;
 
     void updateUI(QLabel *labels[], QLineEdit *values[]);
 
@@ -60,13 +61,8 @@ private:
     int model = IMPROVED_KOREN_TRIODE;
 
     // Model variables
-    double cKg;
-    double cKp;
-    double cAlpha;
-    double cVct;
-    double cKvb;
-    double cKvb2;
-    double cMu;
+    QString parameterName[8];
+    double parameterValue[8];
 
     double korenCurrent(double va, double vg, double kp, double kvb, double a, double mu);
     double improvedKorenCurrent(double va, double vg, double kp, double kvb, double kvb2, double vct, double a, double mu);
