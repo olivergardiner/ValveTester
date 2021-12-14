@@ -983,7 +983,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string>Test:</string>
+          <string>No valid test data to display</string>
          </property>
         </widget>
        </item>
@@ -1157,6 +1157,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par1Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1190,6 +1193,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par2Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1223,6 +1229,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par3Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1256,6 +1265,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par4Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1289,6 +1301,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par5Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1322,6 +1337,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par6Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1355,6 +1373,9 @@
          </item>
          <item>
           <widget class="QLineEdit" name="par7Value">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>

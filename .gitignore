@@ -4,3 +4,7 @@ ValveWizard/
 *.zip
 *.exe
 
+debug/
+release/
+.vs/
+

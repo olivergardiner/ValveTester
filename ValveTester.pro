@@ -40,32 +40,32 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
-win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../CMake/ceres-solver/lib/ -lceres
-else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../CMake/ceres-solver/lib/ -lceres-debug
-else:unix: LIBS += -L$$PWD/../../CMake/ceres-solver/lib/ -lceres
+win32:CONFIG(release, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/ceres-solver/lib/ -lceres
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/ceres-solver/lib/ -lceres-debug
+else:unix: LIBS += -L$$(CMAKE_PREFIX_PATH)/ceres-solver/lib/ -lceres
 
-INCLUDEPATH += $$PWD/../../CMake/ceres-solver/include
-DEPENDPATH += $$PWD/../../CMake/ceres-solver/include
+INCLUDEPATH += $$(CMAKE_PREFIX_PATH)/ceres-solver/include
+DEPENDPATH += $$(CMAKE_PREFIX_PATH)/ceres-solver/include
 
-win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$PWD/../../CMake/ceres-solver/lib/libceres.a
-else:win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$PWD/../../CMake/ceres-solver/lib/libceresd.a
-else:win32:!win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$PWD/../../CMake/ceres-solver/lib/ceres.lib
-else:win32:!win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$PWD/../../CMake/ceres-solver/lib/ceres-debug.lib
-else:unix: PRE_TARGETDEPS += $$PWD/../../CMake/ceres-solver/lib/libceres.a
+win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$(CMAKE_PREFIX_PATH)/ceres-solver/lib/libceres.a
+else:win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$(CMAKE_PREFIX_PATH)/ceres-solver/lib/libceresd.a
+else:win32:!win32-g++:CONFIG(release, debug|release): PRE_TARGETDEPS += $$(CMAKE_PREFIX_PATH)/ceres-solver/lib/ceres.lib
+else:win32:!win32-g++:CONFIG(debug, debug|release): PRE_TARGETDEPS += $$(CMAKE_PREFIX_PATH)/ceres-solver/lib/ceres-debug.lib
+else:unix: PRE_TARGETDEPS += $$(CMAKE_PREFIX_PATH)/ceres-solver/lib/libceres.a
 
-win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../CMake/glog/lib/ -lglog
-else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../CMake/glog/lib/ -lglogd
-else:unix: LIBS += -L$$PWD/../../CMake/glog/lib/ -lglog
+win32:CONFIG(release, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/glog/lib/ -lglog
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/glog/lib/ -lglogd
+else:unix: LIBS += -L$$(CMAKE_PREFIX_PATH)/glog/lib/ -lglog
 
-INCLUDEPATH += $$PWD/../../CMake/glog/include
-DEPENDPATH += $$PWD/../../CMake/glog/include
+INCLUDEPATH += $$(CMAKE_PREFIX_PATH)/glog/include
+DEPENDPATH += $$(CMAKE_PREFIX_PATH)/glog/include
 
-win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../CMake/gflags/lib/ -lgflags_static
-else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../CMake/gflags/lib/ -lgflags_static_debug
-else:unix: LIBS += -L$$PWD/../../CMake/gflags/lib/ -lgflags_static
+win32:CONFIG(release, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/gflags/lib/ -lgflags_static
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$(CMAKE_PREFIX_PATH)/gflags/lib/ -lgflags_static_debug
+else:unix: LIBS += -L$$(CMAKE_PREFIX_PATH)/gflags/lib/ -lgflags_static
 
-INCLUDEPATH += $$PWD/../../CMake/gflags/include
-DEPENDPATH += $$PWD/../../CMake/gflags/include
+INCLUDEPATH += $$(CMAKE_PREFIX_PATH)/gflags/include
+DEPENDPATH += $$(CMAKE_PREFIX_PATH)/gflags/include
 
-INCLUDEPATH += $$PWD/../../CMake/eigen3/include/eigen3
-DEPENDPATH += $$PWD/../../CMake/eigen3/include/eigen3
+INCLUDEPATH += $$(CMAKE_PREFIX_PATH)/eigen3/include/eigen3
+DEPENDPATH += $$(CMAKE_PREFIX_PATH)/eigen3/include/eigen3

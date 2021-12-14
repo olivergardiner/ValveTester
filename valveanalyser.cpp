@@ -370,6 +370,11 @@ void ValveAnalyser::testFinished()
         if (deviceType == PENTODE) {
             plotTitle.append(QString {" with Vg2 = %1V"}.arg(screenStart, -6, 'f', 3, '0'));
         }
+    } else if (testType == TRANSFER_CHARACTERISTICS) {
+        plotTitle.append(" Transfer Characterisitcs");
+        if (deviceType == PENTODE) {
+            plotTitle.append(QString {" with Vg2 = %1V"}.arg(screenStart, -6, 'f', 3, '0'));
+        }
     }
 
     ui->plotTitle->setText(plotTitle);
