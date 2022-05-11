@@ -25,7 +25,7 @@ boolean hardware;         //Will be set to 1 if hardware ID pin is high (MASTER)
 //Adafruit_MCP4725 dac1;
 //Adafruit_MCP4725 dac2;
 
-CommandParser parser(modeCommand, getCommand, setCommand, commandError);
+CommandParser parser(infoCommand, modeCommand, getCommand, setCommand, commandError);
 
 enum {
   ERR_INVALID_MODE,
@@ -125,6 +125,36 @@ void loop() {
 } //End of main program loop
 
 // USB command interface functions
+
+/************************************************************
+   Callback for Info commands
+ ************************************************************/
+void infoCommand(int index) {
+  int success = 1;
+
+  switch (index) {
+    case 0: // H/W Version info
+      Serial.print("OK: Info(");
+      Serial.print(index);
+      Serial.println(') = Rev 1 (Nano)');
+      break;
+    case 1: // S/W Version info
+      Serial.print("OK: Info(");
+      Serial.print(index);
+      Serial.println(') = 1.0.0');
+      break;
+    default:
+      success = -ERR_INVALID_MODE;
+      break;
+  }
+
+  if (success < 0) {
+    Serial.print("ERR: ");
+    Serial.print(errorMessages[-success]);
+    Serial.print(" - ");
+    printValues();
+  }
+}
 
 /************************************************************
    Callback for Mode commands

@@ -3,7 +3,8 @@
 #include <stdio.h>
 #include <ctype.h>
 
-CommandParser::CommandParser(void (*mode)(int), void (*getter)(int), void (*setter)(int, int), void (*error)(const char *)) {
+CommandParser::CommandParser(void (*info)(int), void (*mode)(int), void (*getter)(int), void (*setter)(int, int), void (*error)(const char *)) {
+  infoFunction = info;
   modeFunction = mode;
   getFunction = getter;
   setFunction = setter;
@@ -30,6 +31,11 @@ void CommandParser::doCommand() {
   command[0] = toupper(command[0]);
 
   switch (command[0]) {
+    case 'I':
+      if (sscanf(command, "I%d", &index) > 0) {
+        infoFunction(index);
+      }
+      break;
     case 'M':
       if (sscanf(command, "M%d", &index) > 0) {
         modeFunction(index);

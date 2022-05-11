@@ -57,6 +57,7 @@
 *FUNCTION PROTOTYPES
 ************************************************************/
 void flushSerialBuffer();
+void infoCommand(int index);
 void modeCommand(int index);
 void getCommand(int index);
 void setCommand(int index, int intParam);
