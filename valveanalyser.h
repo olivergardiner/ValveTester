@@ -27,8 +27,9 @@
 #include "sample.h"
 #include "analyser.h"
 #include "template.h"
-#include "devicemodel.h"
-#include "plot.h"
+//#include "devicemodel.h"
+#include "valvemodel/plot.h"
+#include "valvemodel/modelfactory.h"
 
 #include "ledindicator.h"
 
@@ -154,7 +155,8 @@ private:
 
     QJsonObject config;
     QList<Template> templates;
-    DeviceModel *model = nullptr;
+    //DeviceModel *model = nullptr;
+    Model *model = nullptr;
 
     int measuredValues[10];
     double measuredHeaterVoltage = 0.0;

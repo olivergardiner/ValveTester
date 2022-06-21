@@ -509,13 +509,9 @@ void ValveAnalyser::plotTransfer()
 
 void ValveAnalyser::runModel()
 {
-    int modelType = MODEL_TRIODE;
-    if (dataSetDeviceType == PENTODE) {
-        modelType = MODEL_PENTODE;
-    }
-
     if (model == nullptr) {
-        model = new DeviceModel(modelType, ui->modelSelection->currentData().toInt());
+        model = ModelFactory::createModel(ui->modelSelection->currentData().toInt());
+        //model = new DeviceModel(modelType, ui->modelSelection->currentData().toInt());
     }
 
     int sweeps = sweepResult.length();
@@ -526,11 +522,13 @@ void ValveAnalyser::runModel()
         int samples = thisSweep.length();
         for (int j = 0; j < samples; j++) {
              Sample *sample = thisSweep.at(j);
-             if (dataSetDeviceType == TRIODE) {
+             model->addSample(sample->getVa(), sample->getIa(), sample->getVg1(), sample->getVg2());
+
+             /*if (dataSetDeviceType == TRIODE) {
                  model->addTriodeSample(sample->getVa(), sample->getVg1(), sample->getIa());
              } else if (dataSetDeviceType == PENTODE) {
                  model->addPentodeSample(sample->getVa(), sample->getVg1(), sample->getVg2(), sample->getIa());
-             }
+             }*/
         }
     }
 

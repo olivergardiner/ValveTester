@@ -1,4 +1,5 @@
 #include "command.h"
+#include "valveanalyser.h"
 
 Command::Command(QString command, void (ValveAnalyser::*read)(QString), void (ValveAnalyser::*timeout)())
 {

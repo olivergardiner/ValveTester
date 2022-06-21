@@ -11,25 +11,49 @@ CONFIG += c++11
 SOURCES += \
     analyser.cpp \
     command.cpp \
-    devicemodel.cpp \
     ledindicator.cpp \
     main.cpp \
-    plot.cpp \
     preferencesdialog.cpp \
     sample.cpp \
     template.cpp \
-    valveanalyser.cpp
+    valveanalyser.cpp \
+    valvemodel/circuit.cpp \
+    valvemodel/device.cpp \
+    valvemodel/improvedkorentriode.cpp \
+    valvemodel/korentriode.cpp \
+    valvemodel/model.cpp \
+    valvemodel/modelfactory.cpp \
+    valvemodel/parameter.cpp \
+    valvemodel/plot.cpp \
+    valvemodel/simpletriode.cpp \
+    valvemodel/template.cpp \
+    valvemodel/triodeaccathodefollower.cpp \
+    valvemodel/triodecommoncathode.cpp \
+    valvemodel/triodedccathodefollower.cpp \
+    valvemodel/uibridge.cpp
 
 HEADERS += \
     analyser.h \
     command.h \
-    devicemodel.h \
     ledindicator.h \
-    plot.h \
     preferencesdialog.h \
     sample.h \
     template.h \
-    valveanalyser.h
+    valveanalyser.h \
+    valvemodel/circuit.h \
+    valvemodel/device.h \
+    valvemodel/improvedkorentriode.h \
+    valvemodel/korentriode.h \
+    valvemodel/model.h \
+    valvemodel/modelfactory.h \
+    valvemodel/parameter.h \
+    valvemodel/plot.h \
+    valvemodel/simpletriode.h \
+    valvemodel/template.h \
+    valvemodel/triodeaccathodefollower.h \
+    valvemodel/triodecommoncathode.h \
+    valvemodel/triodedccathodefollower.h \
+    valvemodel/uibridge.h
 
 FORMS += \
     preferencesdialog.ui \
