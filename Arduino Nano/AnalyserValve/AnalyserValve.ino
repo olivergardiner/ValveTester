@@ -31,6 +31,7 @@ enum {
   ERR_INVALID_MODE,
   ERR_INVALID_SET,
   ERR_INVALID_GET,
+  ERR_INVALID_INFO,
   ERR_HEATER_RANGE,
   ERR_GRID_RANGE,
   ERR_HT_RANGE,
@@ -42,6 +43,7 @@ const char *errorMessages[] = {
   "Invalid mode command",
   "Invalid set command",
   "Invalid get command",
+  "Invalid info command",
   "Heater voltage out of range",
   "Grid voltage out of range",
   "HT voltage out of range",
@@ -136,15 +138,15 @@ void infoCommand(int index) {
     case 0: // H/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(') = Rev 1 (Nano)');
+      Serial.println(") = Rev 1 (Nano)");
       break;
     case 1: // S/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(') = 1.0.0');
+      Serial.println(") = 1.0.0");
       break;
     default:
-      success = -ERR_INVALID_MODE;
+      success = -ERR_INVALID_INFO;
       break;
   }
 
