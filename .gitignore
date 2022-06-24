@@ -7,6 +7,7 @@ ValveWizard/
 debug/
 release/
 .vs/
+docs/doxygen/
 
 # Ignore list for DesignSpark PCB, a PCB layout tool
 desktop.ini
