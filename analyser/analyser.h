@@ -7,8 +7,8 @@
 #include <QTextStream>
 #include <QTimer>
 
-#include "sampleset.h"
-#include "constants.h"
+#include "../valvemodel/model/sampleset.h"
+#include "../valvemodel/constants.h"
 #include "client.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]

@@ -11,52 +11,50 @@ CONFIG += c++11
 SOURCES += \
     analyser/analyser.cpp \
     analyser/client.cpp \
-    analyser/sampleset.cpp \
     ledindicator.cpp \
     main.cpp \
     preferencesdialog.cpp \
-    analyser/sample.cpp \
     template.cpp \
     valveanalyser.cpp \
-    valvemodel/circuit.cpp \
-    valvemodel/device.cpp \
-    valvemodel/improvedkorentriode.cpp \
-    valvemodel/korentriode.cpp \
-    valvemodel/model.cpp \
-    valvemodel/modelfactory.cpp \
-    valvemodel/parameter.cpp \
-    valvemodel/plot.cpp \
-    valvemodel/simpletriode.cpp \
-    valvemodel/template.cpp \
-    valvemodel/triodeaccathodefollower.cpp \
-    valvemodel/triodecommoncathode.cpp \
-    valvemodel/triodedccathodefollower.cpp \
-    valvemodel/uibridge.cpp
+    valvemodel/model/device.cpp \
+    valvemodel/model/model.cpp \
+    valvemodel/model/modelfactory.cpp \
+    valvemodel/model/improvedkorentriode.cpp \
+    valvemodel/model/korentriode.cpp \
+    valvemodel/model/sample.cpp \
+    valvemodel/model/sampleset.cpp \
+    valvemodel/model/simpletriode.cpp \
+    valvemodel/circuit/circuit.cpp \
+    valvemodel/circuit/triodeaccathodefollower.cpp \
+    valvemodel/circuit/triodecommoncathode.cpp \
+    valvemodel/circuit/triodedccathodefollower.cpp \
+    valvemodel/ui/uibridge.cpp \
+    valvemodel/ui/plot.cpp \
+    valvemodel/ui/parameter.cpp
 
 HEADERS += \
     analyser/analyser.h \
     analyser/client.h \
-    analyser/constants.h \
-    analyser/sampleset.h \
     ledindicator.h \
     preferencesdialog.h \
-    analyser/sample.h \
     template.h \
     valveanalyser.h \
-    valvemodel/circuit.h \
-    valvemodel/device.h \
-    valvemodel/improvedkorentriode.h \
-    valvemodel/korentriode.h \
-    valvemodel/model.h \
-    valvemodel/modelfactory.h \
-    valvemodel/parameter.h \
-    valvemodel/plot.h \
-    valvemodel/simpletriode.h \
-    valvemodel/template.h \
-    valvemodel/triodeaccathodefollower.h \
-    valvemodel/triodecommoncathode.h \
-    valvemodel/triodedccathodefollower.h \
-    valvemodel/uibridge.h
+    valvemodel/constants.h \
+    valvemodel/model/device.h \
+    valvemodel/model/improvedkorentriode.h \
+    valvemodel/model/korentriode.h \
+    valvemodel/model/model.h \
+    valvemodel/model/modelfactory.h \
+    valvemodel/model/sample.h \
+    valvemodel/model/sampleset.h \
+    valvemodel/model/simpletriode.h \
+    valvemodel/circuit/circuit.h \
+    valvemodel/circuit/triodeaccathodefollower.h \
+    valvemodel/circuit/triodecommoncathode.h \
+    valvemodel/circuit/triodedccathodefollower.h \
+    valvemodel/ui/uibridge.h \
+    valvemodel/ui/plot.h \
+    valvemodel/ui/parameter.h
 
 FORMS += \
     preferencesdialog.ui \

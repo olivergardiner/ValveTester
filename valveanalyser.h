@@ -27,9 +27,9 @@
 #include "template.h"
 #include "analyser/analyser.h"
 #include "analyser/client.h"
-#include "analyser/sample.h"
-#include "valvemodel/plot.h"
-#include "valvemodel/modelfactory.h"
+#include "valvemodel/model/sample.h"
+#include "valvemodel/ui/plot.h"
+#include "valvemodel/model/modelfactory.h"
 
 #include "ledindicator.h"
 
