@@ -203,6 +203,11 @@ const QList<QList<Sample *> > *Analyser::getSweepResult() const
     return &sweepResult;
 }
 
+SampleSet *Analyser::getResult()
+{
+    return &result;
+}
+
 bool Analyser::getIsDataSetValid() const
 {
     return isDataSetValid;
@@ -213,6 +218,8 @@ void Analyser::startTest()
     // Clear down the previous result set
     sweepResult.clear();
     currentSweep = new QList<Sample *>;
+
+    result.reset();
 
     measuredIaMax = 0.0;
     measuredIg2Max = 0.0;
@@ -285,7 +292,9 @@ void Analyser::nextSample() {
             currentSweep = new QList<Sample *>;
         }
 
-        if (stepIndex < stepParameter.length()) {
+        if (stepIndex < stepParameter.length()) { // There is another sweep to measure
+            result.nextSweep();
+
             //setupCommands.append("M1"); // Discharge the capacitor banks at the end of a sweep (or it may take a while)
             sendCommand(buildSetCommand(stepCommandPrefix, stepParameter.at(stepIndex)));
             sendCommand(buildSetCommand(sweepCommandPrefix, sweepParameter.at(stepIndex).at(sweepIndex)));
@@ -395,6 +404,7 @@ void Analyser::checkResponse(QString response)
             // Store the measurement
             Sample *sample = createSample(response);
             currentSweep->append(sample);
+            result.addSample(sample);
             double va = sample->getVa();
             double ia = sample->getIa();
 

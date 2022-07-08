@@ -7,7 +7,8 @@
 #include <QTextStream>
 #include <QTimer>
 
-#include "sample.h"
+#include "sampleset.h"
+#include "constants.h"
 #include "client.h"
 
 #define VH       0   //Heater voltage  [example: 12.6V = adc391   6.3V = adc195]
@@ -20,26 +21,6 @@
 #define HV2      7   //Anode voltage 2
 #define IA_HI_2  8   //Anode current hi 2
 #define IA_LO_2  9   //Anode current lo 2
-
-enum eDevice {
-    PENTODE,
-    TRIODE,
-    DOUBLE_TRIODE,
-    DIODE
-};
-
-enum eTest {
-    ANODE_CHARACTERISTICS,
-    SCREEN_CHARACTERISTICS,
-    TRANSFER_CHARACTERISTICS
-};
-
-enum eElectrode {
-    HEATER,
-    ANODE,
-    GRID,
-    SCREEN
-};
 
 class Analyser
 {
@@ -79,6 +60,8 @@ public:
     double getMeasuredIg2Max() const;
 
     const QList<QList<Sample *> > *getSweepResult() const;
+
+    SampleSet *getResult();
 
     bool getIsDataSetValid() const;
 
@@ -129,6 +112,7 @@ private:
     QString stepCommandPrefix;
     QString sweepCommandPrefix;
 
+    SampleSet result;
     QList<QList <Sample *>> sweepResult;
     QList<Sample *> *currentSweep;
     int setupIndex;

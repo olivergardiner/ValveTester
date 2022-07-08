@@ -11,6 +11,7 @@ CONFIG += c++11
 SOURCES += \
     analyser/analyser.cpp \
     analyser/client.cpp \
+    analyser/sampleset.cpp \
     ledindicator.cpp \
     main.cpp \
     preferencesdialog.cpp \
@@ -35,6 +36,8 @@ SOURCES += \
 HEADERS += \
     analyser/analyser.h \
     analyser/client.h \
+    analyser/constants.h \
+    analyser/sampleset.h \
     ledindicator.h \
     preferencesdialog.h \
     analyser/sample.h \

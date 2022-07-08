@@ -139,6 +139,44 @@ void ValveAnalyser::setSerialPort(QString portName)
     serialPort.open(QSerialPort::ReadWrite);
 }
 
+void ValveAnalyser::saveModel(QString filename)
+{
+    QFile modelFile(filename);
+
+    if (!modelFile.open(QIODevice::ReadWrite)) {
+        qWarning("Couldn't open model file.");
+    } else {
+        QJsonObject modelObject;
+
+        modelObject["name"] = ui->deviceName->text();
+        modelObject["vaMax"] = anodeStop;
+        modelObject["iaMax"] = iaMax;
+        modelObject["paMax"] = pMax;
+        model->toJson(modelObject, gridStop, screenStop);
+
+        modelFile.write(QJsonDocument(modelObject).toJson());
+    }
+}
+
+void ValveAnalyser::saveSamples(QString filename)
+{
+    QFile samplelFile(filename);
+
+    if (!samplelFile.open(QIODevice::ReadWrite)) {
+        qWarning("Couldn't open model file.");
+    } else {
+        QJsonObject modelObject;
+
+        modelObject["name"] = ui->deviceName->text();
+        modelObject["vaMax"] = anodeStop;
+        modelObject["iaMax"] = iaMax;
+        modelObject["paMax"] = pMax;
+        model->toJson(modelObject, gridStop, screenStop);
+
+        samplelFile.write(QJsonDocument(modelObject).toJson());
+    }
+}
+
 void ValveAnalyser::readConfig(QString filename)
 {
     QFile configFile(filename);
@@ -328,7 +366,7 @@ void ValveAnalyser::doPlot()
 {
     switch (testType) {
     case ANODE_CHARACTERISTICS:
-        plotAnode();
+        plotAnode2();
         break;
     case TRANSFER_CHARACTERISTICS:
         plotTransfer();
@@ -392,6 +430,34 @@ void ValveAnalyser::plotAnode()
     ui->showMeasuredValues->setChecked(true);
 
     measuredCurves = plot.getScene()->createItemGroup(segments);
+}
+
+void ValveAnalyser::plotAnode2()
+{
+    double majorVDivision = 25.0;
+    double majorIDivision = 1.0;
+
+    double maxVoltage = anodeStop;
+    double maxCurrent = analyser->getMeasuredIaMax();
+
+    if (maxCurrent > 50.0) { // Over 20mA we plot the Ia axis in steps of 10mA
+        majorIDivision = 10.0;
+    } else if (maxCurrent > 20.0) {
+        majorIDivision = 5.0;
+    }
+
+    double iaAxisMax = (((int) (maxCurrent / majorIDivision)) + 1) * majorIDivision;
+    double vaAxisMax = (((int) (maxVoltage / majorVDivision)) + 2) * majorVDivision;
+    plot.setAxes(0.0, vaAxisMax, majorVDivision, 0.0, iaAxisMax, majorIDivision, 2, 1);
+
+    QPen samplePen;
+    samplePen.setColor(QColor::fromRgb(0, 0, 0));
+
+    QList<QGraphicsItem *> *segments = analyser->getResult()->plot(&plot);
+
+    ui->showMeasuredValues->setChecked(true);
+
+    measuredCurves = plot.getScene()->createItemGroup(*segments);
 }
 
 void ValveAnalyser::plotTransfer()
@@ -483,6 +549,36 @@ void ValveAnalyser::runModel()
     model->updateUI(parameterLabels, parameterValues);
 
     ui->showModelledValues->setChecked(true);
+
+    ui->saveModelButton->setEnabled(true);
+
+    plotModel();
+}
+
+void ValveAnalyser::runModel2()
+{
+    if (model == nullptr) {
+        model = ModelFactory::createModel(ui->modelSelection->currentData().toInt());
+        //model = new DeviceModel(modelType, ui->modelSelection->currentData().toInt());
+    }
+
+    SampleSet *result = analyser->getResult();
+
+    result->beginRead();
+
+    Sample *sample = result->readNextSample();
+    while (sample != nullptr) {
+        model->addSample(sample->getVa(), sample->getIa(), sample->getVg1(), sample->getVg2());
+        sample = result->readNextSample();
+    }
+
+    model->solve();
+
+    model->updateUI(parameterLabels, parameterValues);
+
+    ui->showModelledValues->setChecked(true);
+
+    ui->saveModelButton->setEnabled(true);
 
     plotModel();
 }
@@ -704,6 +800,8 @@ void ValveAnalyser::on_runButton_clicked()
         analyser->setSweepParameters(anodeStart, anodeStop, anodeStep, gridStart, gridStop, gridStep, screenStart, screenStop, screenStep);
 
         analyser->startTest();
+
+        ui->saveModelButton->setEnabled(false);
     } else {
         ui->runButton->setChecked(false);
     }
@@ -866,7 +964,7 @@ void ValveAnalyser::on_modelSelection_currentIndexChanged(int index)
 void ValveAnalyser::on_fitModelButton_clicked()
 {
     if (analyser->getIsDataSetValid()) {
-        runModel();
+        runModel2();
     }
 }
 
@@ -881,6 +979,41 @@ void ValveAnalyser::on_showModelledValues_clicked(bool checked)
 {
     if (modelledCurves) {
         modelledCurves->setVisible(checked);
+    }
+}
+
+
+void ValveAnalyser::on_saveModelButton_clicked()
+{
+    QFileDialog dialog(this, tr("Save Model"));
+    dialog.setFileMode(QFileDialog::AnyFile);
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setNameFilter("*.json");
+
+    QStringList fileNames;
+    if (dialog.exec() == 1) {
+        //fileNames = dialog.selectedFiles();
+        //QMessageBox message(this);
+        //message.setText(fileNames.at(0));
+        //message.exec();
+        saveModel(dialog.selectedFiles().at(0));
+    }
+}
+
+void ValveAnalyser::on_saveSamplesButton_clicked()
+{
+    QFileDialog dialog(this, tr("Save Samples"));
+    dialog.setFileMode(QFileDialog::AnyFile);
+    dialog.setAcceptMode(QFileDialog::AcceptSave);
+    dialog.setNameFilter("*.json");
+
+    QStringList fileNames;
+    if (dialog.exec() == 1) {
+        //fileNames = dialog.selectedFiles();
+        //QMessageBox message(this);
+        //message.setText(fileNames.at(0));
+        //message.exec();
+        saveModel(dialog.selectedFiles().at(0));
     }
 }
 

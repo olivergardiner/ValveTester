@@ -18,6 +18,8 @@
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <QColor>
+#include <QFileDialog>
+#include <QMessageBox>
 
 #include <cmath>
 
@@ -103,6 +105,10 @@ private slots:
 
     void on_showModelledValues_clicked(bool checked);
 
+    void on_saveModelButton_clicked();
+
+    void on_saveSamplesButton_clicked();
+
 private:
     Ui::ValveAnalyser *ui;
     QLineEdit *parameterValues[8];
@@ -150,8 +156,15 @@ private:
 
     bool heaters = false;
 
+    QString plotTitle = "";
+
+    QFile *logFile;
+
     void checkComPorts();
     void setSerialPort(QString portName);
+
+    void saveModel(QString filename);
+    void saveSamples(QString filename);
 
     void readConfig(QString filename);
     void loadTemplate(int index);
@@ -164,17 +177,15 @@ private:
     void triodeMode(bool doubleTriode);
     void diodeMode();
 
-    QString plotTitle = "";
-
-    QFile *logFile;
-
     void log(QString message);
 
     void doPlot();
     void plotAnode();
+    void plotAnode2();
     void plotTransfer();
     void plotTransferModel();
     void runModel();
+    void runModel2();
     void plotModel();
     void plotAnodeModel();
     QLine createSegment(double x1, double y1, double x2, double y2, QPen pen);
