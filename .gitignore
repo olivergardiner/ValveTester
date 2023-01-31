@@ -1,0 +1,29 @@
+# Ignore list for DesignSpark PCB, a PCB layout tool
+desktop.ini
+
+# Backup files
+~*.prj
+~*.sch
+~*.pcb
+
+# Report files
+*.mop
+*Report).txt
+
+# Exported images and docs
+*.bmp
+*.png
+*.pdf
+
+# Production files
+*.gmo
+*.gbp
+*.gbs
+*.gbl
+*.drl
+*.gtp
+*.gts
+*.gtl
+*.gto
+
+*.zip
