@@ -351,19 +351,19 @@ void setHeaterVolts() { //Manages the heater buck-converter
     duty_cycle = 255;
   }
 
-  if (Ih_adc > 55) {                  //If heater current is more than 2 amps the device has a problem and we should turn the heaters off
+  if (Ih_adc > 110) {                  //If heater current is more than 2 amps the device has a problem and we should turn the heaters off
     duty_cycle = 0;
   }
 
   analogWrite(PWM_PIN, duty_cycle);   //Update buck converter with new duty cycle
 
-  vHeater = (vHeater * AVG_FACTOR + ((double) Vh_adc));
-  iHeater = (iHeater * AVG_FACTOR + ((double) Ih_adc));
+  //vHeater = (vHeater * AVG_FACTOR + ((double) Vh_adc));
+  //iHeater = (iHeater * AVG_FACTOR + ((double) Ih_adc));
 
-  //measuredValues[VH] = Vh_adc;                  //Update the array with new heater voltage
-  //measuredValues[IH] = Ih_adc;                  //Update the array with new heater current
-  measuredValues[VH] = vHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater voltage
-  measuredValues[IH] = iHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater current
+  measuredValues[VH] = Vh_adc;                  //Update the array with new heater voltage
+  measuredValues[IH] = Ih_adc;                  //Update the array with new heater current
+  //measuredValues[VH] = vHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater voltage
+  //measuredValues[IH] = iHeater * (1.0 - AVG_FACTOR);                  //Update the array with new *average* heater current
 }
 
 /****************************************************************************
@@ -387,110 +387,6 @@ void setGridVolts() {
   if (Wire.endTransmission() == 0) {          //If I2C tramission was a success
     measuredValues[VG2] = targetValues[VG2];  //Store the new grid voltage
   }
-}
-
-/****************************************************************************
-  Charges up the high-voltage capacitor banks to the target values
-****************************************************************************/
-int chargeHighVoltages() { //Manages the HV supply
-  digitalWrite(FIRE1_PIN, LOW);                       //Turn off MOSFETs (fail-safe measure)
-  digitalWrite(FIRE2_PIN, LOW);
-  analogWrite(CHARGE1_PIN, 0);
-  analogWrite(CHARGE2_PIN, 0);
-  //digitalWrite(DISCHARGE1_PIN, LOW);
-  //digitalWrite(DISCHARGE2_PIN, LOW);
-  analogWrite(DISCHARGE1_PIN, 0);
-  analogWrite(DISCHARGE2_PIN, 0);
-
-  measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
-  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
-  measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
-  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
-  
-  if (measuredValues[HV1] > (targetValues[HV1] + OVERVOLTAGE)) {     //Check if our start condition is overvoltage
-    dischargeHighVoltages(1);                        //If so, discharge it manually as it may take a while to settle through leakage
-    measuredValues[HV1] = analogRead(VA1_PIN);       //Measure the high voltage and store the value
-  }
-  if (measuredValues[HV2] > (targetValues[HV2] + OVERVOLTAGE)) {     //Check if our start condition is overvoltage
-    dischargeHighVoltages(2);                        //If so, discharge it manually as it may take a while to settle through leakage
-    measuredValues[HV2] = analogRead(VA2_PIN);       //Measure the high voltage and store the value
-  }
-
-  //While either storage cap is not charged to the correct voltage, alternately charge each cap
-  //NB: Both cannot be charged simultaneously or one may hold down the supply to the other.
-  int timeout1 = 0;
-
-  //while ((measuredValues[HV1] != targetValues[HV1]) || (measuredValues[HV2] != targetValues[HV2])) {
-  while (!checkAnodeVoltage(measuredValues[HV1], targetValues[HV1]) || !checkAnodeVoltage(measuredValues[HV2], targetValues[HV2])) {    
-    setHeaterVolts(); //Keep the heater happy
-
-    int timeout2 = 0;
-    while (measuredValues[HV1] < (targetValues[HV1] + OVERVOLTAGE)) { //If voltage is too low, charge capacitor
-      setHeaterVolts(); //Keep the heater happy
-
-      int duty = setDuty(measuredValues[HV1], targetValues[HV1]);
-      analogWrite(CHARGE1_PIN, duty); // If we're in PWM mode then set the duty cycle according to the (inverse) voltage gap
-      measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
-      if (timeout2++ > HT_TIMEOUT) {
-        chargeOff();
-        return -ERR_HT_TIMEOUT;
-      }
-    }
-
-    chargeOff();
-                                                                                                                 
-    timeout2 = 0;
-    measuredValues[HV2] = analogRead(VA2_PIN);          //Measure the high voltage and store the value
-    while (measuredValues[HV2] < (targetValues[HV2] + OVERVOLTAGE)) { //If voltage is too low, charge capacitor
-      setHeaterVolts(); //Keep the heater happy
-
-      int duty = setDuty(measuredValues[HV2], targetValues[HV2]);
-      analogWrite(CHARGE2_PIN, duty); // If we're in PWM mode then set the duty cycle according to the (inverse) voltage gap
-      measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
-      if (timeout2++ > HT_TIMEOUT) {
-        chargeOff();
-        return -ERR_HT_TIMEOUT;
-      }
-    }
-    chargeOff();
-    
-    measuredValues[HV1] = analogRead(VA1_PIN);//Check first capacitor bank again
-    
-    if (timeout1++ > HT_TIMEOUT) {
-      chargeOff();
-      return -ERR_HT_TIMEOUT;
-    }
-  }
-
-  return 1;
-}
-
-void chargeOff() {
-    analogWrite(CHARGE1_PIN, 0);
-    analogWrite(CHARGE2_PIN, 0);
-}
-
-bool checkAnodeVoltage(int measured, int target) {
-  // At lower voltages, we could narrow the tolerance band to improve accuracy
-  int gap = measured - target;
-  return gap >= 0 && gap < (2 * OVERVOLTAGE); // This allows us to be on the money or a little over
-}
-
-int setDuty(int measured, int target) {
-  int measuredGap = 1023 - measured; // Rather than gap to target, we take the gap to absolute max (as this is the voltage across the charging resistor)
-  if (measuredGap >= THRESHOLD) { // If the gap is over the threshold the the duty cycle is minimum to be nice to the resistors 
-    return HV_DUTY_MIN;
-  }
-  double gap = ((double) (THRESHOLD - measuredGap)) / THRESHOLD; // Find out how far below the threshold we are and increase the duty cycle in proportion
-  int duty = (int) (gap * CHARGING_SPEED) + HV_DUTY_MIN;
-  if (duty < HV_DUTY_MIN) {
-    duty = HV_DUTY_MIN;
-  }
-  if (duty > 255) {
-    duty = 255;
-  }
-
-  return duty;
 }
 
 /****************************************************************************
@@ -521,6 +417,7 @@ void measureValues() {
   measuredValues[IA_XHI_1] = analogRead(IA1_XHI_PIN);
   measuredValues[IA_XHI_1] = analogRead(IA1_XHI_PIN);
   
+  measuredValues[HV2] = analogRead(VA2_PIN);
   measuredValues[HV2] = analogRead(VA2_PIN);
   measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
   measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
@@ -575,4 +472,92 @@ int sgn(int value) {
   if (value < 0) {
     return -1;
   }
+}
+
+/****************************************************************************
+  Charges up the high-voltage capacitor banks to the target values
+****************************************************************************/
+int chargeHighVoltages() { //Manages the HV supply
+  digitalWrite(FIRE1_PIN, LOW);                       //Turn off MOSFETs (fail-safe measure)
+  digitalWrite(FIRE2_PIN, LOW);
+  analogWrite(CHARGE1_PIN, 0);
+  analogWrite(CHARGE2_PIN, 0);
+  analogWrite(DISCHARGE1_PIN, 0);
+  analogWrite(DISCHARGE2_PIN, 0);
+
+  measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV1] = analogRead(VA1_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
+  measuredValues[HV2] = analogRead(VA2_PIN);         //Measure the high voltage and store the value
+
+  int gap1 = abs(measuredValues[HV1] - targetValues[HV1]);
+  int gap2 = abs(measuredValues[HV2] - targetValues[HV2]);
+
+  //While either storage cap is not charged to the correct voltage, charge or discharge each cap
+  int timeout = 0;
+  int duty = 0;
+
+  while (gap1 > HV_ACCURACY || gap2 > HV_ACCURACY) {
+    if (measuredValues[HV1] < targetValues[HV1]) {
+      duty = setChargeDuty(1200 - measuredValues[HV1], gap1);
+      analogWrite(CHARGE1_PIN, duty);
+      analogWrite(DISCHARGE1_PIN, 0);
+    } else if (measuredValues[HV1] > targetValues[HV1]) {
+      duty = setChargeDuty(measuredValues[HV1], gap1);
+      analogWrite(CHARGE1_PIN, 0);
+      analogWrite(DISCHARGE1_PIN, duty);
+    }
+
+    if (measuredValues[HV2] < targetValues[HV2]) {
+      duty = setChargeDuty(1200 - measuredValues[HV2], gap2);
+      analogWrite(CHARGE2_PIN, duty);
+      analogWrite(DISCHARGE2_PIN, 0);
+    } else if (measuredValues[HV2] > targetValues[HV2]) {
+      duty = setChargeDuty(measuredValues[HV2], gap2);
+      analogWrite(CHARGE2_PIN, 0);
+      analogWrite(DISCHARGE2_PIN, duty);
+    }
+
+    if (++timeout > HT_TIMEOUT) {
+      analogWrite(CHARGE1_PIN, 0);
+      analogWrite(DISCHARGE1_PIN, 0);
+      analogWrite(CHARGE2_PIN, 0);
+      analogWrite(DISCHARGE2_PIN, 0);
+      return -ERR_HT_TIMEOUT;
+    }
+
+    setHeaterVolts(); //Keep the heater happy
+
+    measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
+    measuredValues[HV1] = analogRead(VA1_PIN);    //Keep checking the voltage
+    measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
+    measuredValues[HV2] = analogRead(VA2_PIN);    //Keep checking the voltage
+    gap1 = abs(measuredValues[HV1] - targetValues[HV1]);
+    gap2 = abs(measuredValues[HV2] - targetValues[HV2]);
+  }
+
+  analogWrite(CHARGE1_PIN, 0);
+  analogWrite(DISCHARGE1_PIN, 0);
+  analogWrite(CHARGE2_PIN, 0);
+  analogWrite(DISCHARGE2_PIN, 0);
+
+  return 1;
+}
+
+int setChargeDuty(int limit, int gap) {
+  if (limit >= THRESHOLD) { // If the gap is over the threshold the the duty cycle is minimum to be nice to the resistors 
+    return HV_DUTY_MIN;
+  }
+
+  int duty = (THRESHOLD - limit) * CHARGING_SPEED / THRESHOLD + HV_DUTY_MIN; // Find out how far below the threshold we are and increase the duty cycle in proportion
+
+  if (duty > gap * CHARGING_SPEED) {
+    duty = gap * CHARGING_SPEED;
+  }
+
+  if (duty > 255) {
+    duty = 255;
+  }
+
+  return duty;
 }

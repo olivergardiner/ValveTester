@@ -47,11 +47,11 @@
 #define IA_XHI_1 10  //Anode current extra hi 1
 #define IA_XHI_2 11  //Anode current extra hi 2
 
-#define HT_TIMEOUT 64000
-#define CHARGING_SPEED 32
+#define HT_TIMEOUT 256000
+#define CHARGING_SPEED 24
 #define HV_DUTY_MIN 56 // Don't set too low or pentode tests will struggle
 #define THRESHOLD 600 // 600 corresponds to around 360v - once over this we start increasing the duty cycle from min value
-#define OVERVOLTAGE 5 // Plan to overshoot HV a tad to account for leakage (we aim for this value and measure if we're within twice this)
+#define HV_ACCURACY 0 // Tolerance on setting HV
 
 /************************************************************   
 *FUNCTION PROTOTYPES
@@ -68,10 +68,8 @@ int runTest();
 void setHeaterVolts();
 void setGridVolts();
 int chargeHighVoltages();
-bool checkAnodeVoltage(int measured, int target);
-int setDuty(int measured, int target);
+int setChargeDuty(int limit, int gap);
 void dischargeHighVoltages(int bank);
-void chargeOff();
 void doMeasurement();
 void measureValues();
 int sgn(int value);
