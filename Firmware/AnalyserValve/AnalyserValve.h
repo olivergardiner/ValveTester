@@ -47,6 +47,8 @@
 #define IA_XHI_1 10  //Anode current extra hi 1
 #define IA_XHI_2 11  //Anode current extra hi 2
 
+#define SET_AVERAGE_MODE 20
+
 #define HT_TIMEOUT 256000
 #define CHARGING_SPEED 24
 #define HV_DUTY_MIN 56 // Don't set too low or pentode tests will struggle

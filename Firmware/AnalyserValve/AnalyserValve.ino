@@ -20,6 +20,8 @@ double iHeater = 0; // Persistent value used for rolling averaging
 
 int duty_cycle = 0;      //Duty cycle of buck converter
 
+bool averageHT = false;
+
 CommandParser parser(infoCommand, modeCommand, getCommand, setCommand, commandError);
 
 enum {
@@ -137,7 +139,7 @@ void infoCommand(int index) {
     case 1: // S/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(") = 1.1.1");
+      Serial.println(") = 1.1.2");
       break;
     default:
       success = -ERR_INVALID_MODE;
@@ -263,6 +265,9 @@ void setCommand(int index, int intParam) {
       if (intParam < 0 || intParam > 1023) {
         success = -ERR_HT_RANGE;
       }
+      break;
+    case SET_AVERAGE_MODE:
+      averageHT = intParam > 0;
       break;
     default:
       success = -ERR_INVALID_SET;
@@ -664,8 +669,13 @@ int runTest2() {
   digitalWrite(FIRE1_PIN, LOW);      //Remove high voltage from the DUT
   digitalWrite(FIRE2_PIN, LOW);
 
-  measuredValues[HV1] = (hv1 + hv1a) / 2;
-  measuredValues[HV2] = (hv2 + hv2a) / 2;
+  if (averageHT) {
+    measuredValues[HV1] = (hv1 + hv1a) / 2;
+    measuredValues[HV2] = (hv2 + hv2a) / 2;
+  } else {
+    measuredValues[HV1] = hv1;
+    measuredValues[HV2] = hv2;
+  }
 
   return 1;
 }
