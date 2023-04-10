@@ -65,6 +65,7 @@ void commandError(const char *command);
 void printValues();
 
 int runTest();
+int runTest2();
 void setHeaterVolts();
 void setGridVolts();
 int chargeHighVoltages();

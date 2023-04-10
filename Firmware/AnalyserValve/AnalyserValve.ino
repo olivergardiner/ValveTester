@@ -137,7 +137,7 @@ void infoCommand(int index) {
     case 1: // S/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(") = 0.0.1");
+      Serial.println(") = 1.1.1");
       break;
     default:
       success = -ERR_INVALID_MODE;
@@ -180,7 +180,7 @@ void modeCommand(int index) {
       printValues();
       break;
     case 2: // Run test
-      success = runTest();
+      success = runTest2();
       if (success > 0) {
         Serial.print("OK: Mode(");
         Serial.print(index);
@@ -351,7 +351,7 @@ void setHeaterVolts() { //Manages the heater buck-converter
     duty_cycle = 255;
   }
 
-  if (Ih_adc > 110) {                  //If heater current is more than 2 amps the device has a problem and we should turn the heaters off
+  if (Ih_adc > 165) {                  //If heater current is (a lot) more than 2 amps the device has a problem and we should turn the heaters off
     duty_cycle = 0;
   }
 
@@ -560,4 +560,112 @@ int setChargeDuty(int limit, int gap) {
   }
 
   return duty;
+}
+
+/************************************************************
+   Runs a test (inside a single routine to minimise delays)
+ ************************************************************/
+int runTest2() {
+  setGridVolts();
+
+  digitalWrite(FIRE1_PIN, LOW);                       //Turn off MOSFETs (fail-safe measure)
+  digitalWrite(FIRE2_PIN, LOW);
+  analogWrite(CHARGE1_PIN, 0);
+  analogWrite(CHARGE2_PIN, 0);
+  analogWrite(DISCHARGE1_PIN, 0);
+  analogWrite(DISCHARGE2_PIN, 0);
+
+  int hv1;
+  int hv2;  
+  int hv1a;
+  int hv2a;  
+
+  hv1 = analogRead(VA1_PIN);
+  hv1 = analogRead(VA1_PIN);
+  hv2 = analogRead(VA2_PIN);
+  hv2 = analogRead(VA2_PIN);
+
+  int gap1 = abs(hv1 - targetValues[HV1]);
+  int gap2 = abs(hv2 - targetValues[HV2]);
+
+  //While either storage cap is not charged to the correct voltage, charge or discharge each cap
+  int timeout = 0;
+  int duty = 0;
+
+  while (gap1 > HV_ACCURACY || gap2 > HV_ACCURACY) {
+    if (hv1 < targetValues[HV1]) {
+      duty = setChargeDuty(1200 - hv1, gap1);
+      analogWrite(CHARGE1_PIN, duty);
+      analogWrite(DISCHARGE1_PIN, 0);
+    } else if (hv1 > targetValues[HV1]) {
+      duty = setChargeDuty(hv1, gap1);
+      analogWrite(CHARGE1_PIN, 0);
+      analogWrite(DISCHARGE1_PIN, duty);
+    }
+
+    if (hv2 < targetValues[HV2]) {
+      duty = setChargeDuty(1200 - hv2, gap2);
+      analogWrite(CHARGE2_PIN, duty);
+      analogWrite(DISCHARGE2_PIN, 0);
+    } else if (hv2 > targetValues[HV2]) {
+      duty = setChargeDuty(hv2, gap2);
+      analogWrite(CHARGE2_PIN, 0);
+      analogWrite(DISCHARGE2_PIN, duty);
+    }
+
+    if (++timeout > HT_TIMEOUT) {
+      analogWrite(CHARGE1_PIN, 0);
+      analogWrite(DISCHARGE1_PIN, 0);
+      analogWrite(CHARGE2_PIN, 0);
+      analogWrite(DISCHARGE2_PIN, 0);
+      return -ERR_HT_TIMEOUT;
+    }
+
+    setHeaterVolts(); //Keep the heater happy
+
+    hv1 = analogRead(VA1_PIN);    //Keep checking the voltage
+    hv1 = analogRead(VA1_PIN);    //Keep checking the voltage
+    hv2 = analogRead(VA2_PIN);    //Keep checking the voltage
+    hv2 = analogRead(VA2_PIN);    //Keep checking the voltage
+    gap1 = abs(hv1 - targetValues[HV1]);
+    gap2 = abs(hv2 - targetValues[HV2]);
+  }
+
+  analogWrite(CHARGE1_PIN, 0);
+  analogWrite(DISCHARGE1_PIN, 0);
+  analogWrite(CHARGE2_PIN, 0);
+  analogWrite(DISCHARGE2_PIN, 0);
+
+  digitalWrite(FIRE1_PIN, HIGH);    //Apply high voltage to the DUT
+  digitalWrite(FIRE2_PIN, HIGH);
+
+  setHeaterVolts(); //Keep the heater happy - this is simply to provide a delay before reading the currents
+
+  measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+  measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+  measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
+  measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
+
+  measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
+  measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
+  measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+  measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
+
+  measuredValues[IA_XHI_1] = analogRead(IA1_XHI_PIN);
+  measuredValues[IA_XHI_1] = analogRead(IA1_XHI_PIN);  
+  measuredValues[IA_XHI_2] = analogRead(IA2_XHI_PIN);
+  measuredValues[IA_XHI_2] = analogRead(IA2_XHI_PIN);
+
+  hv1a = analogRead(VA1_PIN);
+  hv1a = analogRead(VA1_PIN);
+  hv2a = analogRead(VA2_PIN);
+  hv2a = analogRead(VA2_PIN);
+
+  digitalWrite(FIRE1_PIN, LOW);      //Remove high voltage from the DUT
+  digitalWrite(FIRE2_PIN, LOW);
+
+  measuredValues[HV1] = (hv1 + hv1a) / 2;
+  measuredValues[HV2] = (hv2 + hv2a) / 2;
+
+  return 1;
 }
