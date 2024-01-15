@@ -139,7 +139,7 @@ void infoCommand(int index) {
     case 1: // S/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(") = 1.1.2");
+      Serial.println(") = 1.1.3");
       break;
     default:
       success = -ERR_INVALID_MODE;
@@ -179,6 +179,7 @@ void modeCommand(int index) {
       Serial.print("OK: Mode(");
       Serial.print(index);
       Serial.print(") ");
+      measureValues();
       printValues();
       break;
     case 2: // Run test
@@ -193,6 +194,7 @@ void modeCommand(int index) {
     case 3: // Prepare HV (for debugging)
       success = chargeHighVoltages();
       if (success > 0) {
+        measureValues();
         Serial.print("OK: Mode(");
         Serial.print(index);
         Serial.print(") ");
@@ -444,11 +446,12 @@ void dischargeHighVoltages(int bank) {
     measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN); // Needs some delay for the switch to close
     measuredValues[IA_HI_1] = analogRead(IA1_HI_PIN);
     measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+    measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
     while (analogRead(IA1_HI_PIN) > 0) { //wait until no discharge current is detected
     //while (analogRead(VA1_PIN) > 0) { //wait until no appreciable voltage is detected
       setHeaterVolts(); //Keep the heater happy
     }
-    digitalWrite(DISCHARGE1_PIN, LOW);
+    analogWrite(DISCHARGE1_PIN, 0);
   } else if (bank == 2) {
     digitalWrite(FIRE2_PIN, LOW);
     analogWrite(CHARGE2_PIN, 0);
@@ -456,12 +459,13 @@ void dischargeHighVoltages(int bank) {
     analogWrite(DISCHARGE2_PIN, 128); //to be kind to the discharge resistor!
     measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
     measuredValues[IA_HI_2] = analogRead(IA2_HI_PIN);
-    measuredValues[IA_LO_2] = analogRead(IA2_LO_PIN);
+    measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
+    measuredValues[IA_LO_1] = analogRead(IA1_LO_PIN);
     while (analogRead(IA2_HI_PIN) > 0) { //wait until no discharge current is detected
     //while (analogRead(VA2_PIN) > 0) { //wait until no appreciable voltage is detected
       setHeaterVolts(); //Keep the heater happy
     }
-    digitalWrite(DISCHARGE2_PIN, LOW);
+    analogWrite(DISCHARGE2_PIN, 0);
   }
 }
 
@@ -550,7 +554,7 @@ int chargeHighVoltages() { //Manages the HV supply
 }
 
 int setChargeDuty(int limit, int gap) {
-  if (limit >= THRESHOLD) { // If the gap is over the threshold the the duty cycle is minimum to be nice to the resistors 
+  if (limit >= THRESHOLD) { // If the gap is over the threshold the duty cycle is minimum to be nice to the resistors 
     return HV_DUTY_MIN;
   }
 
@@ -560,8 +564,8 @@ int setChargeDuty(int limit, int gap) {
     duty = gap * CHARGING_SPEED;
   }
 
-  if (duty > 255) {
-    duty = 255;
+  if (duty > HV_DUTY_MAX) {
+    duty = HV_DUTY_MAX;
   }
 
   return duty;
@@ -626,7 +630,7 @@ int runTest2() {
       return -ERR_HT_TIMEOUT;
     }
 
-    setHeaterVolts(); //Keep the heater happy
+    setHeaterVolts(); //Keep the heater happy (and introduce a slight delay before measuring)
 
     hv1 = analogRead(VA1_PIN);    //Keep checking the voltage
     hv1 = analogRead(VA1_PIN);    //Keep checking the voltage

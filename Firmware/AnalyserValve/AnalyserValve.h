@@ -27,9 +27,31 @@
 #define IA1_HI_PIN A3        //Small anode-current sense (large sense resistance) 
 #define IA1_LO_PIN A2        //Large anode-current sense (small sense resistance)
 
-#define IA2_XHI_PIN A7        //Small anode-current sense (extra large sense resistance) 
+#define IA2_XHI_PIN A7       //Small anode-current sense (extra large sense resistance) 
 #define IA2_HI_PIN A5        //Small anode-current sense (large sense resistance) 
 #define IA2_LO_PIN A6        //Large anode-current sense (small sense resistance)
+
+/*
+//HV1 & 2 swapped for comparison
+#define CHARGE1_PIN 4        //Drive to high-voltage charge MOSFET (PWM)
+#define DISCHARGE1_PIN 3     //Drive to high-voltage discharge MOSFET (PWM)
+#define FIRE1_PIN 15         //Drive to 'apply high voltage' MOSFET 
+
+#define CHARGE2_PIN 6        //Drive to high-voltage charge MOSFET (PWM)
+#define DISCHARGE2_PIN 5     //Drive to high-voltage discharge MOSFET (PWM)
+#define FIRE2_PIN 14         //Drive to 'apply high voltage' MOSFET
+
+#define VA1_PIN A9           //High voltage sense 1
+#define VA2_PIN A8           //High voltage sense 2
+
+#define IA1_XHI_PIN A7       //Small anode-current sense (extra large sense resistance) 
+#define IA1_HI_PIN A5        //Small anode-current sense (large sense resistance) 
+#define IA1_LO_PIN A6        //Large anode-current sense (small sense resistance)
+
+#define IA2_XHI_PIN A4       //Small anode-current sense (extra large sense resistance) 
+#define IA2_HI_PIN A3        //Small anode-current sense (large sense resistance) 
+#define IA2_LO_PIN A2        //Large anode-current sense (small sense resistance)
+*/
 
 #define ARRAY_LENGTH 12         
 
@@ -49,9 +71,10 @@
 
 #define SET_AVERAGE_MODE 20
 
-#define HT_TIMEOUT 256000
-#define CHARGING_SPEED 24
+#define HT_TIMEOUT 32000
+#define CHARGING_SPEED 23
 #define HV_DUTY_MIN 56 // Don't set too low or pentode tests will struggle
+#define HV_DUTY_MAX 200 // Upper limit on charging speed
 #define THRESHOLD 600 // 600 corresponds to around 360v - once over this we start increasing the duty cycle from min value
 #define HV_ACCURACY 0 // Tolerance on setting HV
 
