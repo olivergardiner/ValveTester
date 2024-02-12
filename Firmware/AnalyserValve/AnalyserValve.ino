@@ -94,8 +94,8 @@ void setup() {
   digitalWrite(CHARGE1_PIN, LOW);
   digitalWrite(CHARGE2_PIN, LOW);
 
-  dischargeHighVoltages(1);
-  dischargeHighVoltages(2);
+  //dischargeHighVoltages(1);
+  //dischargeHighVoltages(2);
 
   Wire.begin(MASTER_ADDR); 
     
@@ -116,6 +116,7 @@ void loop() {
   }
 
   setHeaterVolts(); // Only if we're not using timer interrupts 
+
 } //End of main program loop
 
 ISR(TIMER1_OVF_vect)        // interrupt service routine 
@@ -134,12 +135,12 @@ void infoCommand(int index) {
 
   switch (index) {
     case 0: // H/W Version info
-      Serial.println("OK: Info(0) = Rev 2 (Mega Pro)");
+      Serial.println("OK: Info(0) = Rev 3 (Mega Pro)");
       break;
     case 1: // S/W Version info
       Serial.print("OK: Info(");
       Serial.print(index);
-      Serial.println(") = 1.1.3");
+      Serial.println(") = 1.1.4");
       break;
     default:
       success = -ERR_INVALID_MODE;
