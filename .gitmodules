@@ -1,3 +1,6 @@
 [submodule "Firmware"]
 	path = Firmware
 	url = https://github.com/olivergardiner/ValveTesterFirmware.git
+[submodule "Software"]
+	path = Software
+	url = https://github.com/olivergardiner/ValveTesterSoftware.git
